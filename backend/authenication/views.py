@@ -1,5 +1,7 @@
 # authentication/views.py
 
+from datetime import timedelta
+import random
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -9,7 +11,8 @@ from .models import Administrator, OTPVerification
 from .serializers import LoginSerializer, VerifyOTPSerializer
 import uuid
 from django.contrib.auth.hashers import check_password
-import hashlib
+from .models import OTPVerification
+from .utils import send_otp_email
 
 
 class LoginAPIView(APIView):
@@ -18,6 +21,7 @@ class LoginAPIView(APIView):
 
     Accepts: username, password, user_type
     Validates and returns session_id for OTP verification.
+    Also sends OTP to administrator email.
     """
 
     def post(self, request):
@@ -28,38 +32,50 @@ class LoginAPIView(APIView):
         password = serializer.validated_data["password"]
         user_type = serializer.validated_data["user_type"]
 
-        # For now, we only handle administrator login
         if user_type != "administrator":
             return Response({"detail": "Only administrator login supported now."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             user = Administrator.objects.get(username=username)
+            
         except Administrator.DoesNotExist:
             return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Check if account is locked
         if user.account_locked:
             return Response({"detail": "Account is locked."}, status=status.HTTP_403_FORBIDDEN)
 
-        # ✅ Validate password using Django's password checking
+        #  Validate password using Django's secure method
         if not check_password(password, user.password_hash):
             user.failed_login_attempts += 1
             user.save(update_fields=["failed_login_attempts"])
-            Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
-
-        # Reset failed attempts if successful
+        # ✅ Successful login
         user.failed_login_attempts = 0
         user.last_login = timezone.now()
         user.save(update_fields=["last_login", "failed_login_attempts"])
 
-        # Generate session ID (UUID) for OTP verification
-        session_id = str(uuid.uuid4())
+        # ✅ Generate OTP
+        otp_code = str(random.randint(100000, 999999))
+        session_id = uuid.uuid4()
 
-        # You will store this in your OTP table and send OTP later
+        # ✅ Save OTP record
+        OTPVerification.objects.create(
+            otp_id=session_id,
+            user_type="administrator",
+            user_id=user.admin_id,
+            email=user.email,
+            otp_code=otp_code,
+            expires_at=timezone.now() + timedelta(minutes=5)
+        )
+
+        # ✅ Send OTP to email
+        send_otp_email(user.email, otp_code)
+
+        # ✅ Return session ID
         return Response({
-            "session_id": session_id,
-            "message": "Login successful. Proceed to OTP verification."
+            "session_id": str(session_id),
+            "message": "Login successful. OTP sent to your email."
         }, status=status.HTTP_200_OK)
 
 class VerifyOTPAPIView(APIView):

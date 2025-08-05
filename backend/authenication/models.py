@@ -35,6 +35,10 @@ class Administrator(models.Model):
 
     def __str__(self):
         return self.username
+    
+    @property
+    def id(self):
+        return self.admin_id
 
 
 # authentication/models.py (continued)
