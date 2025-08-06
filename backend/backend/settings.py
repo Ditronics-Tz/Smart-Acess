@@ -131,12 +131,12 @@ REST_FRAMEWORK = {
     ),
 }
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'smtp.gmail.com'
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER = 'your_email@gmail.com'
-# EMAIL_HOST_PASSWORD = 'your_password'utils.pyutils.py
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # For production
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587  # Correct port for Gmail with TLS
+EMAIL_USE_TLS = True  # Boolean value, not string
+EMAIL_HOST_USER = 'testorder1245@gmail.com'
+EMAIL_HOST_PASSWORD = 'piik ctai zlyk owfm '  # Replace with actual app password
+DEFAULT_FROM_EMAIL = 'testorder1245@gmail.com'
