@@ -1,6 +1,7 @@
 # authentication/serializers.py
 
 from rest_framework import serializers
+from .models import RegistrationOfficer
 
 
 class LoginSerializer(serializers.Serializer):
@@ -22,3 +23,43 @@ class VerifyOTPSerializer(serializers.Serializer):
         if not value.isdigit():
             raise serializers.ValidationError("OTP must contain only digits")
         return value
+
+
+class CreateRegistrationOfficerSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(min_length=8, write_only=True)
+    confirm_password = serializers.CharField(min_length=8, write_only=True)
+
+    class Meta:
+        model = RegistrationOfficer
+        fields = ['username', 'full_name', 'email', 'phone_number', 'password', 'confirm_password']
+
+    def validate(self, data):
+        if data['password'] != data['confirm_password']:
+            raise serializers.ValidationError("Passwords do not match")
+        return data
+
+    def validate_username(self, value):
+        if RegistrationOfficer.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already exists")
+        return value
+
+    def validate_email(self, value):
+        if RegistrationOfficer.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already exists")
+        return value
+
+
+class ResendOTPSerializer(serializers.Serializer):
+    session_id = serializers.UUIDField()
+    user_type = serializers.ChoiceField(choices=[
+        ("administrator", "Administrator"),
+        ("registration_officer", "Registration Officer")
+    ])
+
+
+class RefreshTokenSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
