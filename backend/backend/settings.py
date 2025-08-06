@@ -40,7 +40,8 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'rest_framework_simplejwt',
-    'authenication'
+    'authenication',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
@@ -51,6 +52,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -140,3 +142,38 @@ EMAIL_USE_TLS = True  # Boolean value, not string
 EMAIL_HOST_USER = 'testorder1245@gmail.com'
 EMAIL_HOST_PASSWORD = 'piik ctai zlyk owfm '  # Replace with actual app password
 DEFAULT_FROM_EMAIL = 'testorder1245@gmail.com'
+
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins (for development)
+# For production, use:
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # React dev server
+    "http://127.0.0.1:3000",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_ALL_ORIGINS = True  # Only for development
+
+CORS_ALLOWED_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# Handle preflight requests
+CORS_PREFLIGHT_MAX_AGE = 86400
