@@ -205,7 +205,10 @@ class VerifyOTPAPIView(APIView, RateLimitMixin):
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
         # Generate JWT tokens
-        refresh = RefreshToken.for_user(user)
+        refresh = RefreshToken()
+        refresh['user_id'] = str(otp_obj.user_id)
+        refresh['user_type'] = user_type
+        
         return Response({
             "access": str(refresh.access_token),
             "refresh": str(refresh),
