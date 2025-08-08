@@ -204,13 +204,20 @@ class VerifyOTPAPIView(APIView, RateLimitMixin):
         except user_model.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Generate JWT tokens
+        # Generate JWT tokens without using RefreshToken.for_user()
         refresh = RefreshToken()
         refresh['user_id'] = str(otp_obj.user_id)
         refresh['user_type'] = user_type
+        refresh['username'] = user.username
         
+        # Add same claims to access token
+        access = refresh.access_token
+        access['user_id'] = str(otp_obj.user_id)
+        access['user_type'] = user_type
+        access['username'] = user.username
+
         return Response({
-            "access": str(refresh.access_token),
+            "access": str(access),
             "refresh": str(refresh),
             "user_type": user_type,
             "user_id": str(otp_obj.user_id),
