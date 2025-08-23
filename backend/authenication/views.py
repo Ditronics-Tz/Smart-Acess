@@ -121,34 +121,26 @@ class LoginAPIView(APIView, RateLimitMixin):
         else:
             return Response({"detail": "Invalid user type."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Rate limiting for OTP generation
-        otp_rate_key = f"otp_generation_{user.email}"
-        otp_attempts = cache.get(otp_rate_key, 0)
-        if otp_attempts >= 3:
-            return Response({"detail": "Too many OTP requests. Try again in 5 minutes."}, 
-                          status=status.HTTP_429_TOO_MANY_REQUESTS)
-
-        # Generate OTP
-        otp_code = str(random.randint(100000, 999999))
-        session_id = uuid.uuid4()
-
-        # Save OTP record
-        OTPVerification.objects.create(
-            otp_id=session_id,
-            user_type=user_type,
-            user_id=user_id,
-            email=user.email,
-            otp_code=otp_code,
-            expires_at=timezone.now() + timedelta(minutes=5)
-        )
-
-        # Send OTP to email
-        send_otp_email(user.email, otp_code)
-        cache.set(otp_rate_key, otp_attempts + 1, timeout=5 * 60)
+        # OTP disabled - directly generate JWT tokens
+        # Generate JWT tokens without using RefreshToken.for_user()
+        refresh = RefreshToken()
+        refresh['user_id'] = str(user_id)
+        refresh['user_type'] = user_type
+        refresh['username'] = user.username
+        
+        # Add same claims to access token
+        access = refresh.access_token
+        access['user_id'] = str(user_id)
+        access['user_type'] = user_type
+        access['username'] = user.username
 
         return Response({
-            "session_id": str(session_id),
-            "message": "Login successful. OTP sent to your email."
+            "access": str(access),
+            "refresh": str(refresh),
+            "user_type": user_type,
+            "user_id": str(user_id),
+            "username": user.username,
+            "message": "Login successful."
         }, status=status.HTTP_200_OK)
 
 
