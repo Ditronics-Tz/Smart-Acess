@@ -13,7 +13,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+# Load .env file from the correct path (project root)
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
 
 from pathlib import Path
 
@@ -47,6 +48,7 @@ INSTALLED_APPS = [
     'authenication',
     'corsheaders',
     'adminstrator',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
