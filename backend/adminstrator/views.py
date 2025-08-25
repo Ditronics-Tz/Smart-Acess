@@ -26,3 +26,9 @@ class SecurityPersonnelListView(generics.ListAPIView):
     search_fields = ['full_name', 'employee_id', 'badge_number']
     ordering_fields = ['full_name', 'employee_id', 'badge_number', 'hire_date', 'created_at']
     ordering = ['-created_at']
+
+class SecurityPersonnelDetailView(generics.RetrieveAPIView):
+    queryset = SecurityPersonnel.objects.all()
+    serializer_class = SecurityPersonnelSerializer
+    permission_classes = [IsAdministrator]
+    lookup_field = 'security_id'
