@@ -16,7 +16,7 @@ class SecurityPersonnelCreateView(generics.CreateAPIView):
 	serializer_class = SecurityPersonnelSerializer
 	permission_classes = [IsAdministrator]
 
-class SecurityPersonnelListView(generics.ListAPIView):
+class SecurityPersonnelListView(generics.ListAPIView): #list of secuirty perosnnel w filter
     queryset = SecurityPersonnel.objects.all()
     serializer_class = SecurityPersonnelSerializer
     permission_classes = [IsAdministrator]
@@ -27,7 +27,13 @@ class SecurityPersonnelListView(generics.ListAPIView):
     ordering_fields = ['full_name', 'employee_id', 'badge_number', 'hire_date', 'created_at']
     ordering = ['-created_at']
 
-class SecurityPersonnelDetailView(generics.RetrieveAPIView):
+class SecurityPersonnelDetailView(generics.RetrieveAPIView): #for single secuirty-personnel info
+    queryset = SecurityPersonnel.objects.all()
+    serializer_class = SecurityPersonnelSerializer
+    permission_classes = [IsAdministrator]
+    lookup_field = 'security_id'
+
+class SecurityPersonnelUpdateView(generics.UpdateAPIView): # for full update of security personnel
     queryset = SecurityPersonnel.objects.all()
     serializer_class = SecurityPersonnelSerializer
     permission_classes = [IsAdministrator]
