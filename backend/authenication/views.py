@@ -1,6 +1,7 @@
 # authentication/views.py
 
 from datetime import timedelta
+from os import access
 import random
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,10 +11,10 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.core.cache import cache
-from django.contrib.auth.hashers import make_password, check_password
-from .models import Administrator, RegistrationOfficer, OTPVerification
+from django.contrib.auth.hashers import check_password
+from .models import User, OTPVerification
 from .serializers import (
-    LoginSerializer, VerifyOTPSerializer, CreateRegistrationOfficerSerializer,
+    LoginSerializer, VerifyOTPSerializer, CreateUserSerializer,
     ResendOTPSerializer, RefreshTokenSerializer, LogoutSerializer
 )
 import uuid
@@ -75,69 +76,45 @@ class LoginAPIView(APIView, RateLimitMixin):
         username_rate_key = f"login_username_{username}"
         username_attempts = cache.get(username_rate_key, 0)
         if username_attempts >= 3:
-            return Response({"detail": "Too many login attempts for this username. Try again in 10 minutes."}, 
+            return Response({"detail": "Too many login attempts for this username. Try again in 10 minutes."},
                           status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # Handle different user types
-        if user_type == "administrator":
-            try:
-                user = Administrator.objects.get(username=username)
-            except Administrator.DoesNotExist:
-                cache.set(username_rate_key, username_attempts + 1, timeout=10 * 60)
-                return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            user = User.objects.get(username=username, user_type=user_type)
+        except User.DoesNotExist:
+            cache.set(username_rate_key, username_attempts + 1, timeout=10 * 60)
+            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
-            if user.account_locked:
-                return Response({"detail": "Account is locked."}, status=status.HTTP_403_FORBIDDEN)
+        if user.account_locked:
+            return Response({"detail": "Account is locked."}, status=status.HTTP_403_FORBIDDEN)
 
-            if not check_password(password, user.password_hash):
-                user.failed_login_attempts += 1
-                user.save(update_fields=["failed_login_attempts"])
-                cache.set(username_rate_key, username_attempts + 1, timeout=10 * 60)
-                return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+        if not user.check_password(password):
+            user.failed_login_attempts += 1
+            user.save(update_fields=["failed_login_attempts"])
+            cache.set(username_rate_key, username_attempts + 1, timeout=10 * 60)
+            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
-            cache.delete(username_rate_key)
-            user.failed_login_attempts = 0
-            user.last_login = timezone.now()
-            user.save(update_fields=["last_login", "failed_login_attempts"])
-            user_id = user.admin_id
-
-        elif user_type == "registration_officer":
-            try:
-                user = RegistrationOfficer.objects.get(username=username)
-            except RegistrationOfficer.DoesNotExist:
-                cache.set(username_rate_key, username_attempts + 1, timeout=10 * 60)
-                return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
-
-            if not user.is_active:
-                return Response({"detail": "Account is inactive."}, status=status.HTTP_403_FORBIDDEN)
-
-            if not check_password(password, user.password_hash):
-                cache.set(username_rate_key, username_attempts + 1, timeout=10 * 60)
-                return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
-
-            cache.delete(username_rate_key)
-            user_id = user.officer_id
-
-        else:
-            return Response({"detail": "Invalid user type."}, status=status.HTTP_400_BAD_REQUEST)
+        cache.delete(username_rate_key)
+        user.failed_login_attempts = 0
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login", "failed_login_attempts"])
+        user_id = user.id
 
         # OTP disabled - directly generate JWT tokens
         # Generate JWT tokens without using RefreshToken.for_user()
-        refresh = RefreshToken()
-        refresh['user_id'] = str(user_id)
-        refresh['user_type'] = user_type
+        refresh = RefreshToken.for_user(user)
+        refresh['user_type'] = user.user_type
         refresh['username'] = user.username
         
         # Add same claims to access token
         access = refresh.access_token
-        access['user_id'] = str(user_id)
-        access['user_type'] = user_type
+        access['user_type'] = user.user_type
         access['username'] = user.username
 
         return Response({
             "access": str(access),
             "refresh": str(refresh),
-            "user_type": user_type,
+            "user_type": user.user_type,
             "user_id": str(user_id),
             "username": user.username,
             "message": "Login successful."
@@ -163,7 +140,7 @@ class VerifyOTPAPIView(APIView, RateLimitMixin):
         session_rate_key = f"otp_session_{session_id}"
         session_attempts = cache.get(session_rate_key, 0)
         if session_attempts >= 5:
-            return Response({"detail": "Too many OTP attempts for this session. Please request a new OTP."}, 
+            return Response({"detail": "Too many OTP attempts for this session. Please request a new OTP."},
                           status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         try:
@@ -183,36 +160,26 @@ class VerifyOTPAPIView(APIView, RateLimitMixin):
         otp_obj.verified_at = timezone.now()
         otp_obj.save()
 
-        # Get user based on user type
-        if user_type == "administrator":
-            user_model = Administrator
-        elif user_type == "registration_officer":
-            user_model = RegistrationOfficer
-        else:
-            return Response({"detail": "Invalid user type."}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
-            user = user_model.objects.get(pk=otp_obj.user_id)
-        except user_model.DoesNotExist:
+            user = User.objects.get(pk=otp_obj.user_id)
+        except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
         # Generate JWT tokens without using RefreshToken.for_user()
-        refresh = RefreshToken()
-        refresh['user_id'] = str(otp_obj.user_id)
-        refresh['user_type'] = user_type
+        refresh = RefreshToken.for_user(user)
+        refresh['user_type'] = user.user_type
         refresh['username'] = user.username
         
         # Add same claims to access token
         access = refresh.access_token
-        access['user_id'] = str(otp_obj.user_id)
-        access['user_type'] = user_type
+        access['user_type'] = user.user_type
         access['username'] = user.username
 
         return Response({
             "access": str(access),
             "refresh": str(refresh),
-            "user_type": user_type,
-            "user_id": str(otp_obj.user_id),
+            "user_type": user.user_type,
+            "user_id": str(user.id),
             "username": user.username
         }, status=status.HTTP_200_OK)
 
@@ -240,7 +207,7 @@ class ResendOTPAPIView(APIView, RateLimitMixin):
         # Check if last OTP is still valid (prevent spam)
         if otp_obj.expires_at > timezone.now():
             time_left = int((otp_obj.expires_at - timezone.now()).total_seconds() / 60)
-            return Response({"detail": f"Current OTP is still valid for {time_left} minutes."}, 
+            return Response({"detail": f"Current OTP is still valid for {time_left} minutes."},
                           status=status.HTTP_400_BAD_REQUEST)
 
         # Generate new OTP
@@ -259,38 +226,28 @@ class ResendOTPAPIView(APIView, RateLimitMixin):
         }, status=status.HTTP_200_OK)
 
 
-class CreateRegistrationOfficerAPIView(APIView):
+class CreateUserAPIView(APIView):
     """
-    POST /api/auth/create-registration-officer
-    Only administrators can create registration officers
+    POST /api/auth/create-user
+    Only administrators can create users
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         # Check if user is administrator
-        try:
-            admin = Administrator.objects.get(admin_id=request.user.id)
-        except Administrator.DoesNotExist:
-            return Response({"detail": "Only administrators can create registration officers."}, 
+        if not request.user.user_type == 'administrator':
+            return Response({"detail": "Only administrators can create users."},
                           status=status.HTTP_403_FORBIDDEN)
 
-        serializer = CreateRegistrationOfficerSerializer(data=request.data)
+        serializer = CreateUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        # Create registration officer
-        registration_officer = RegistrationOfficer.objects.create(
-            username=serializer.validated_data['username'],
-            full_name=serializer.validated_data['full_name'],
-            email=serializer.validated_data['email'],
-            phone_number=serializer.validated_data.get('phone_number'),
-            password_hash=make_password(serializer.validated_data['password'])
-        )
+        user = serializer.save()
 
         return Response({
-            "message": "Registration officer created successfully.",
-            "officer_id": str(registration_officer.officer_id),
-            "username": registration_officer.username,
-            "email": registration_officer.email
+            "message": "User created successfully.",
+            "user_id": str(user.id),
+            "username": user.username,
+            "email": user.email
         }, status=status.HTTP_201_CREATED)
 
 

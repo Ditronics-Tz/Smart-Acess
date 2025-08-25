@@ -1,8 +1,18 @@
 # authentication/serializers.py
 
 from rest_framework import serializers
-from .models import RegistrationOfficer
+from .models import User
 
+class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'full_name', 'email', 'phone_number', 'user_type', 'password')
+
+    def create(self, validated_data):
+        user = User.objects.create_user(**validated_data)
+        return user
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(min_length=3, max_length=50)
@@ -25,13 +35,13 @@ class VerifyOTPSerializer(serializers.Serializer):
         return value
 
 
-class CreateRegistrationOfficerSerializer(serializers.ModelSerializer):
+class CreateUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(min_length=8, write_only=True)
     confirm_password = serializers.CharField(min_length=8, write_only=True)
 
     class Meta:
-        model = RegistrationOfficer
-        fields = ['username', 'full_name', 'email', 'phone_number', 'password', 'confirm_password']
+        model = User
+        fields = ['username', 'full_name', 'email', 'phone_number', 'user_type', 'password', 'confirm_password']
 
     def validate(self, data):
         if data['password'] != data['confirm_password']:
@@ -39,14 +49,19 @@ class CreateRegistrationOfficerSerializer(serializers.ModelSerializer):
         return data
 
     def validate_username(self, value):
-        if RegistrationOfficer.objects.filter(username=value).exists():
+        if User.objects.filter(username=value).exists():
             raise serializers.ValidationError("Username already exists")
         return value
 
     def validate_email(self, value):
-        if RegistrationOfficer.objects.filter(email=value).exists():
+        if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("Email already exists")
         return value
+    
+    def create(self, validated_data):
+        validated_data.pop('confirm_password')
+        user = User.objects.create_user(**validated_data)
+        return user
 
 
 class ResendOTPSerializer(serializers.Serializer):

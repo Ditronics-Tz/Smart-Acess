@@ -10,6 +10,11 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
+
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -37,11 +42,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
     'rest_framework',
     'rest_framework_simplejwt',
     'authenication',
     'corsheaders',
+    'adminstrator',
 ]
 
 MIDDLEWARE = [
@@ -80,8 +85,12 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
     }
 }
 
@@ -133,7 +142,7 @@ REST_FRAMEWORK = {
     ),
 }
 
-
+AUTH_USER_MODEL = 'authenication.User'
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # For production
 EMAIL_HOST = 'smtp.gmail.com'
@@ -177,3 +186,10 @@ CORS_ALLOW_METHODS = [
 
 # Handle preflight requests
 CORS_PREFLIGHT_MAX_AGE = 86400
+
+from rest_framework_simplejwt.settings import api_settings
+
+SIMPLE_JWT = {
+    'USER_ID_FIELD': 'id',  # Use your UUID field
+    'USER_ID_CLAIM': 'user_id',
+}

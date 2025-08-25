@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 'indexes': [models.Index(fields=['employee_id'], name='idx_security_employee_id'), models.Index(fields=['badge_number'], name='idx_security_badge'), models.Index(fields=['is_active'], name='idx_security_active'), models.Index(fields=['deleted_at'], name='idx_security_deleted')],
-                'constraints': [models.CheckConstraint(condition=models.Q(('termination_date__isnull', True), ('hire_date__isnull', True), ('termination_date__gte', models.F('hire_date')), _connector='OR'), name='check_security_termination_after_hire')],
+                'constraints': [models.CheckConstraint(check=models.Q(('termination_date__isnull', True), ('hire_date__isnull', True), ('termination_date__gte', models.F('hire_date')), _connector='OR'), name='check_security_termination_after_hire')],
             },
         ),
     ]
