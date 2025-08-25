@@ -10,7 +10,7 @@ urlpatterns = [
     path("login", LoginAPIView.as_view(), name="login"),
     path("verify-otp", VerifyOTPAPIView.as_view(), name="verify-otp"),
     path("resend-otp", ResendOTPAPIView.as_view(), name="resend-otp"),
-    path("create-user", CreateUserAPIView.as_view(), name="create-user"),
+    path("create-user", CreateUserAPIView.as_view(), name="create-user"), ##fore registartion
     path("refresh", RefreshTokenAPIView.as_view(), name="refresh-token"),
     path("logout", LogoutAPIView.as_view(), name="logout"),
 ]
