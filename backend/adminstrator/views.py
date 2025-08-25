@@ -33,7 +33,7 @@ class SecurityPersonnelDetailView(generics.RetrieveAPIView): #for single secuirt
     permission_classes = [IsAdministrator]
     lookup_field = 'security_id'
 
-class SecurityPersonnelUpdateView(generics.UpdateAPIView): # for full update of security personnel
+class SecurityPersonnelUpdateView(generics.UpdateAPIView): # for both full (PUT) and partial (PATCH) update of security personnel
     queryset = SecurityPersonnel.objects.all()
     serializer_class = SecurityPersonnelSerializer
     permission_classes = [IsAdministrator]
