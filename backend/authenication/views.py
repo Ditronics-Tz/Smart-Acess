@@ -303,6 +303,45 @@ class DeactivateUserAPIView(APIView): #deactivating registration-officer
                         status=status.HTTP_200_OK)
 
 
+class ChangeUserPasswordAPIView(APIView):   # view for administartor to change reg-officer password
+    """
+    PATCH /api/auth/users/<user_id>/change-password/
+    Only administrators can reset user passwords
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, user_id):
+        if request.user.user_type != 'administrator':
+            return Response({"detail": "Only administrators can change passwords."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        new_password = request.data.get("new_password")
+        confirm_password = request.data.get("confirm_password")
+
+        if not new_password or not confirm_password:
+            return Response({"detail": "Both new_password and confirm_password are required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if new_password != confirm_password:
+            return Response({"detail": "Passwords do not match."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if len(new_password) < 8:
+            return Response({"detail": "Password must be at least 8 characters long."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+
+        return Response({"message": f"Password updated successfully for {user.username}."},
+                        status=status.HTTP_200_OK)
+
+
 class RefreshTokenAPIView(APIView):
     """
     POST /api/auth/refresh
