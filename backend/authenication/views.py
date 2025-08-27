@@ -279,6 +279,29 @@ class RetrieveUserAPIView(APIView):    # endpoint for retrieving registration-of
         }, status=status.HTTP_200_OK)
 
 
+class DeactivateUserAPIView(APIView): #deactivating registration-officer
+    """
+    PATCH /api/auth/users/<user_id>/deactivate/
+    Only administrators can deactivate users
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, user_id):
+        if request.user.user_type != 'administrator':
+            return Response({"detail": "Only administrators can deactivate users."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        user.is_active = False
+        user.save()
+
+        return Response({"message": f"User {user.username} deactivated successfully."},
+                        status=status.HTTP_200_OK)
+
 
 class RefreshTokenAPIView(APIView):
     """
