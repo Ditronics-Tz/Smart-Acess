@@ -35,13 +35,14 @@ class VerifyOTPSerializer(serializers.Serializer):
         return value
 
 
-class CreateUserSerializer(serializers.ModelSerializer):
+class CreateUserSerializer(serializers.ModelSerializer):    #fixed serializers for administartor to only create regi offciers
     password = serializers.CharField(min_length=8, write_only=True)
     confirm_password = serializers.CharField(min_length=8, write_only=True)
 
     class Meta:
         model = User
-        fields = ['username', 'full_name', 'email', 'phone_number', 'user_type', 'password', 'confirm_password']
+        fields = ['username', 'full_name', 'email', 'phone_number', 'password', 'confirm_password']
+        
 
     def validate(self, data):
         if data['password'] != data['confirm_password']:
@@ -57,11 +58,16 @@ class CreateUserSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("Email already exists")
         return value
-    
+
     def create(self, validated_data):
         validated_data.pop('confirm_password')
+
+        # ✅ Force registration_officer user type
+        validated_data['user_type'] = 'registration_officer'
+
         user = User.objects.create_user(**validated_data)
         return user
+
 
 
 class ResendOTPSerializer(serializers.Serializer):

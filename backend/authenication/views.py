@@ -249,6 +249,35 @@ class CreateUserAPIView(APIView):
             "username": user.username,
             "email": user.email
         }, status=status.HTTP_201_CREATED)
+    
+
+class RetrieveUserAPIView(APIView):    # endpoint for retrieving registration-officer details
+    """
+    GET /api/auth/users/<user_id>/
+    Only administrators can view user details
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        if request.user.user_type != 'administrator':
+            return Response({"detail": "Only administrators can retrieve users."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "user_id": str(user.id),
+            "username": user.username,
+            "full_name": user.full_name,
+            "email": user.email,
+            "phone_number": user.phone_number,
+            "user_type": user.user_type,
+            "is_active": user.is_active,
+        }, status=status.HTTP_200_OK)
+
 
 
 class RefreshTokenAPIView(APIView):
