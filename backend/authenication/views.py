@@ -12,7 +12,9 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.core.cache import cache
 from django.contrib.auth.hashers import check_password
+from django.core.paginator import Paginator
 from .models import User, OTPVerification
+from django.db import models
 from .serializers import (
     LoginSerializer, VerifyOTPSerializer, CreateUserSerializer,
     ResendOTPSerializer, RefreshTokenSerializer, LogoutSerializer
@@ -25,23 +27,23 @@ class RateLimitMixin:
     """
     Rate limiting mixin for API views
     """
-    
+
     def check_rate_limit(self, request, key_suffix, max_attempts=5, window_minutes=15):
         """
         Check if request exceeds rate limit
         """
         client_ip = self.get_client_ip(request)
         cache_key = f"rate_limit_{key_suffix}_{client_ip}"
-        
+
         attempts = cache.get(cache_key, 0)
-        
+
         if attempts >= max_attempts:
             return False, f"Too many attempts. Try again in {window_minutes} minutes."
-        
+
         # Increment attempts
         cache.set(cache_key, attempts + 1, timeout=window_minutes * 60)
         return True, None
-    
+
     def get_client_ip(self, request):
         """
         Get client IP address
@@ -105,7 +107,7 @@ class LoginAPIView(APIView, RateLimitMixin):
         refresh = RefreshToken.for_user(user)
         refresh['user_type'] = user.user_type
         refresh['username'] = user.username
-        
+
         # Add same claims to access token
         access = refresh.access_token
         access['user_type'] = user.user_type
@@ -169,7 +171,7 @@ class VerifyOTPAPIView(APIView, RateLimitMixin):
         refresh = RefreshToken.for_user(user)
         refresh['user_type'] = user.user_type
         refresh['username'] = user.username
-        
+
         # Add same claims to access token
         access = refresh.access_token
         access['user_type'] = user.user_type
@@ -249,7 +251,7 @@ class CreateUserAPIView(APIView):
             "username": user.username,
             "email": user.email
         }, status=status.HTTP_201_CREATED)
-    
+
 
 class RetrieveUserAPIView(APIView):    # endpoint for retrieving registration-officer details
     """
@@ -276,6 +278,86 @@ class RetrieveUserAPIView(APIView):    # endpoint for retrieving registration-of
             "phone_number": user.phone_number,
             "user_type": user.user_type,
             "is_active": user.is_active,
+        }, status=status.HTTP_200_OK)
+
+
+class ListRegistrationOfficersAPIView(APIView):
+    """
+    GET /api/auth/registration-officers/
+    Only administrators can list registration officers
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.user_type != 'administrator':
+            return Response({"detail": "Only administrators can list registration officers."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        # Get query parameters
+        page = request.GET.get('page', 1)
+        page_size = request.GET.get('page_size', 10)
+        search = request.GET.get('search', '')
+        is_active = request.GET.get('is_active', None)
+
+        # Base queryset - only registration officers
+        queryset = User.objects.filter(user_type='registration_officer')
+
+        # Apply filters
+        if search:
+            queryset = queryset.filter(
+                models.Q(username__icontains=search) |
+                models.Q(full_name__icontains=search) |
+                models.Q(email__icontains=search)
+            )
+
+        if is_active is not None:
+            is_active_bool = is_active.lower() == 'true'
+            queryset = queryset.filter(is_active=is_active_bool)
+
+        # Order by creation date (newest first)
+        queryset = queryset.order_by('-created_at')
+
+        # Pagination
+        try:
+            page_size = min(int(page_size), 100)  # Max 100 items per page
+            page = int(page)
+        except (ValueError, TypeError):
+            page = 1
+            page_size = 10
+
+        paginator = Paginator(queryset, page_size)
+
+        try:
+            users_page = paginator.page(page)
+        except:
+            users_page = paginator.page(1)
+
+        # Serialize user data
+        users_data = []
+        for user in users_page:
+            users_data.append({
+                "user_id": str(user.id),
+                "username": user.username,
+                "full_name": user.full_name,
+                "email": user.email,
+                "phone_number": user.phone_number,
+                "is_active": user.is_active,
+                "created_at": user.created_at.isoformat(),
+                "last_login": user.last_login.isoformat() if user.last_login else None,
+                "failed_login_attempts": user.failed_login_attempts,
+                "account_locked": user.account_locked
+            })
+
+        return Response({
+            "registration_officers": users_data,
+            "pagination": {
+                "current_page": users_page.number,
+                "total_pages": paginator.num_pages,
+                "total_count": paginator.count,
+                "has_next": users_page.has_next(),
+                "has_previous": users_page.has_previous(),
+                "page_size": page_size
+            }
         }, status=status.HTTP_200_OK)
 
 
@@ -354,7 +436,7 @@ class RefreshTokenAPIView(APIView):
         try:
             refresh_token = RefreshToken(serializer.validated_data['refresh'])
             access_token = refresh_token.access_token
-            
+
             return Response({
                 "access": str(access_token),
                 "refresh": str(refresh_token)
