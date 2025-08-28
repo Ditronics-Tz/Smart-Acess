@@ -1,411 +1,405 @@
-# Administrator Module - Security Personnel Management API
+# Security Personnel Management API Documentation
 
 ## Overview
+This document covers the Security Personnel Management endpoints for administrators in the Smart Access system. These endpoints allow administrators to perform complete CRUD operations on security personnel records.
 
-The Administrator module provides a comprehensive REST API for managing security personnel in the Smart Access system. This module handles CRUD operations for security personnel records with JWT-based authentication and role-based permissions.
-
-## Features
-
-- ✅ Complete CRUD operations (Create, Read, Update, Delete)
-- ✅ Soft delete with restore functionality
-- ✅ JWT-based authentication
-- ✅ Role-based permissions (Administrator only)
-- ✅ UUID-based primary keys
-- ✅ Data validation and constraints
-- ✅ Filtering and pagination support
-- ✅ Database indexing for performance
-
-## Model Structure
-
-### SecurityPersonnel
-
-The main model for storing security personnel information:
-
-```python
-class SecurityPersonnel(models.Model):
-    security_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    employee_id = models.CharField(max_length=50, unique=True)
-    badge_number = models.CharField(max_length=50, unique=True)
-    full_name = models.CharField(max_length=255)
-    phone_number = models.CharField(max_length=20, blank=True, null=True)
-    hire_date = models.DateField(null=True, blank=True)
-    termination_date = models.DateField(null=True, blank=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
+## Base URL
+```
+http://localhost:8000/api/administrator/security-personnel/
 ```
 
-#### Fields Description
+---
 
-- **security_id**: UUID primary key, auto-generated
-- **employee_id**: Unique employee identifier (string)
-- **badge_number**: Unique badge number (string)
-- **full_name**: Full name of the security personnel
-- **phone_number**: Optional contact phone number
-- **hire_date**: Date when the personnel was hired
-- **termination_date**: Date when the personnel was terminated (if applicable)
-- **is_active**: Boolean flag for active status
-- **created_at**: Timestamp of record creation
-- **updated_at**: Timestamp of last update
-- **deleted_at**: Timestamp of soft deletion (null if not deleted)
-
-#### Constraints
-
-- Termination date must be after or equal to hire date
-- Employee ID and badge number must be unique
-
-## API Endpoints
-
-### Base URL
-```
-/api/administrator/security-personnel/
-```
-
-### Authentication
+## Authentication
 All endpoints require JWT authentication with Administrator role.
 
-#### Headers Required:
+**Required Headers:**
 ```
-Authorization: Bearer <your_jwt_token>
+Authorization: Bearer <your_jwt_access_token>
 Content-Type: application/json
 ```
 
-### Endpoints Overview
+---
 
-| Method | Endpoint | Description | Permission |
-|--------|----------|-------------|------------|
-| GET | `/` | List all security personnel | Administrator |
-| POST | `/create/` | Create new security personnel | Administrator |
-| GET | `/{uuid}/` | Get specific security personnel | Administrator |
-| PUT/PATCH | `/{uuid}/update/` | Update security personnel | Administrator |
-| DELETE | `/{uuid}/delete/` | Soft delete security personnel | Administrator |
-| POST | `/{uuid}/restore/` | Restore deleted security personnel | Administrator |
+## Endpoints
 
-### 1. List Security Personnel
-```http
-GET /api/administrator/security-personnel/
-```
+### 1. Create Security Personnel
+**Endpoint:** `POST /api/administrator/security-personnel/create/`
 
-**Query Parameters:**
-- `employee_id`: Filter by employee ID
-- `badge_number`: Filter by badge number
-- `full_name`: Filter by full name (case-insensitive partial match)
-- `is_active`: Filter by active status (true/false)
-- `page`: Page number for pagination
-- `page_size`: Number of records per page
-
-**Example Response:**
-```json
-{
-  "count": 25,
-  "next": "http://localhost:8000/api/administrator/security-personnel/?page=2",
-  "previous": null,
-  "results": [
-    {
-      "security_id": "b462e657-4d37-49c5-878d-02c0070f9fd5",
-      "employee_id": "EMP001",
-      "badge_number": "BADGE001",
-      "full_name": "Jane Doe",
-      "phone_number": "+1234567890",
-      "hire_date": "2024-01-15",
-      "termination_date": null,
-      "is_active": true,
-      "created_at": "2025-08-25T19:14:30.123456Z",
-      "updated_at": "2025-08-25T19:14:30.123456Z",
-      "deleted_at": null
-    }
-  ]
-}
-```
-
-### 2. Create Security Personnel
-```http
-POST /api/administrator/security-personnel/create/
-```
+**Description:** Create a new security personnel record
 
 **Request Body:**
 ```json
 {
-  "employee_id": "EMP002",
-  "badge_number": "BADGE002",
-  "full_name": "John Smith",
-  "phone_number": "+1234567891",
-  "hire_date": "2024-02-01"
+    "employee_id": "EMP001",
+    "badge_number": "BADGE001",
+    "full_name": "John Smith",
+    "phone_number": "+1234567890",
+    "hire_date": "2024-01-15"
 }
 ```
 
-**Response:**
+**Field Validation:**
+- `employee_id`: Required, must be unique
+- `badge_number`: Required, must be unique
+- `full_name`: Required string
+- `phone_number`: Optional phone number
+- `hire_date`: Optional date in YYYY-MM-DD format
+
+**Success Response (201):**
 ```json
 {
-  "security_id": "c573f768-5e48-5a06-989e-13d1080g0ae6",
-  "employee_id": "EMP002",
-  "badge_number": "BADGE002",
-  "full_name": "John Smith",
-  "phone_number": "+1234567891",
-  "hire_date": "2024-02-01",
-  "termination_date": null,
-  "is_active": true,
-  "created_at": "2025-08-25T19:30:00.123456Z",
-  "updated_at": "2025-08-25T19:30:00.123456Z",
-  "deleted_at": null
+    "security_id": "123e4567-e89b-12d3-a456-426614174000",
+    "employee_id": "EMP001",
+    "badge_number": "BADGE001",
+    "full_name": "John Smith",
+    "phone_number": "+1234567890",
+    "hire_date": "2024-01-15",
+    "termination_date": null,
+    "is_active": true,
+    "created_at": "2024-01-15T10:30:00.000000Z",
+    "updated_at": "2024-01-15T10:30:00.000000Z",
+    "deleted_at": null
 }
 ```
 
-### 3. Get Security Personnel Details
-```http
-GET /api/administrator/security-personnel/{security_id}/
+---
+
+### 2. List All Security Personnel
+**Endpoint:** `GET /api/administrator/security-personnel/`
+
+**Description:** Get paginated list of all security personnel with filtering and search
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `page_size`: Items per page (default: 20, max: 100)
+- `search`: Search in full_name, employee_id, badge_number
+- `is_active`: Filter by active status (true/false)
+- `ordering`: Sort by fields (full_name, employee_id, badge_number, hire_date, created_at)
+
+**Example URLs:**
+```
+GET /api/administrator/security-personnel/
+GET /api/administrator/security-personnel/?page=2&page_size=10
+GET /api/administrator/security-personnel/?search=john&is_active=true
+GET /api/administrator/security-personnel/?ordering=-created_at
 ```
 
-**Response:**
+**Success Response (200):**
 ```json
 {
-  "security_id": "b462e657-4d37-49c5-878d-02c0070f9fd5",
-  "employee_id": "EMP001",
-  "badge_number": "BADGE001",
-  "full_name": "Jane Doe",
-  "phone_number": "+1234567890",
-  "hire_date": "2024-01-15",
-  "termination_date": null,
-  "is_active": true,
-  "created_at": "2025-08-25T19:14:30.123456Z",
-  "updated_at": "2025-08-25T19:14:30.123456Z",
-  "deleted_at": null
+    "count": 25,
+    "next": "http://localhost:8000/api/administrator/security-personnel/?page=2",
+    "previous": null,
+    "results": [
+        {
+            "security_id": "123e4567-e89b-12d3-a456-426614174000",
+            "employee_id": "EMP001",
+            "badge_number": "BADGE001",
+            "full_name": "John Smith",
+            "phone_number": "+1234567890",
+            "hire_date": "2024-01-15",
+            "termination_date": null,
+            "is_active": true,
+            "created_at": "2024-01-15T10:30:00.000000Z",
+            "updated_at": "2024-01-15T10:30:00.000000Z",
+            "deleted_at": null
+        }
+    ]
 }
 ```
+
+---
+
+### 3. Get Single Security Personnel
+**Endpoint:** `GET /api/administrator/security-personnel/<security_id>/`
+
+**Description:** Get detailed information about a specific security personnel
+
+**URL Parameters:**
+- `security_id`: UUID of the security personnel
+
+**Success Response (200):**
+```json
+{
+    "security_id": "123e4567-e89b-12d3-a456-426614174000",
+    "employee_id": "EMP001",
+    "badge_number": "BADGE001",
+    "full_name": "John Smith",
+    "phone_number": "+1234567890",
+    "hire_date": "2024-01-15",
+    "termination_date": null,
+    "is_active": true,
+    "created_at": "2024-01-15T10:30:00.000000Z",
+    "updated_at": "2024-01-15T10:30:00.000000Z",
+    "deleted_at": null
+}
+```
+
+---
 
 ### 4. Update Security Personnel
-```http
-PUT /api/administrator/security-personnel/{security_id}/update/
-PATCH /api/administrator/security-personnel/{security_id}/update/
-```
+**Endpoint:** `PUT /api/administrator/security-personnel/<security_id>/update/`
+**Endpoint:** `PATCH /api/administrator/security-personnel/<security_id>/update/`
 
-**Request Body (PUT - all fields required):**
-```json
-{
-  "employee_id": "EMP001",
-  "badge_number": "BADGE001",
-  "full_name": "Jane Doe Smith",
-  "phone_number": "+1234567890",
-  "hire_date": "2024-01-15",
-  "termination_date": "2024-12-31",
-  "is_active": false
-}
-```
+**Description:** Update security personnel information (PUT = full update, PATCH = partial update)
+
+**URL Parameters:**
+- `security_id`: UUID of the security personnel
 
 **Request Body (PATCH - partial update):**
 ```json
 {
-  "full_name": "Jane Doe Smith",
-  "termination_date": "2024-12-31",
-  "is_active": false
+    "full_name": "John Smith Jr.",
+    "phone_number": "+1234567891",
+    "termination_date": "2024-12-31",
+    "is_active": false
 }
 ```
 
-### 5. Delete Security Personnel (Soft Delete)
-```http
-DELETE /api/administrator/security-personnel/{security_id}/delete/
-```
-
-**Response:**
+**Request Body (PUT - full update):**
 ```json
 {
-  "message": "Security personnel deleted successfully"
+    "employee_id": "EMP001",
+    "badge_number": "BADGE001",
+    "full_name": "John Smith Jr.",
+    "phone_number": "+1234567891",
+    "hire_date": "2024-01-15",
+    "termination_date": "2024-12-31",
+    "is_active": false
 }
 ```
 
-### 6. Restore Security Personnel
-```http
-POST /api/administrator/security-personnel/{security_id}/restore/
-```
-
-**Response:**
+**Success Response (200):**
 ```json
 {
-  "message": "Security personnel restored successfully"
+    "security_id": "123e4567-e89b-12d3-a456-426614174000",
+    "employee_id": "EMP001",
+    "badge_number": "BADGE001",
+    "full_name": "John Smith Jr.",
+    "phone_number": "+1234567891",
+    "hire_date": "2024-01-15",
+    "termination_date": "2024-12-31",
+    "is_active": false,
+    "created_at": "2024-01-15T10:30:00.000000Z",
+    "updated_at": "2024-01-15T15:45:00.000000Z",
+    "deleted_at": null
 }
 ```
-
-## Error Responses
-
-### Authentication Errors
-```json
-{
-  "detail": "Authentication credentials were not provided."
-}
-```
-
-### Permission Errors
-```json
-{
-  "detail": "You do not have permission to perform this action."
-}
-```
-
-### Validation Errors
-```json
-{
-  "employee_id": ["This field is required."],
-  "badge_number": ["Security personnel with this badge number already exists."]
-}
-```
-
-### Not Found Errors
-```json
-{
-  "detail": "Not found."
-}
-```
-
-## Database Indexes
-
-The following indexes are created for optimal performance:
-
-- `idx_security_employee_id` - Index on employee_id field
-- `idx_security_badge` - Index on badge_number field
-- `idx_security_active` - Index on is_active field
-- `idx_security_deleted` - Index on deleted_at field
-
-## Permissions
-
-### IsAdministrator Permission
-
-Custom permission class that ensures only users with administrator role can access the endpoints.
-
-```python
-class IsAdministrator(BasePermission):
-    def has_permission(self, request, view):
-        return bool(
-            request.user and 
-            request.user.is_authenticated and 
-            hasattr(request.user, 'role') and 
-            request.user.role == 'administrator'
-        )
-```
-
-## Usage Examples
-
-### Getting JWT Token
-
-First, obtain a JWT token by authenticating:
-
-```bash
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@example.com",
-    "password": "your_password"
-  }'
-```
-
-### Creating Security Personnel
-
-```bash
-curl -X POST http://localhost:8000/api/administrator/security-personnel/create/ \
-  -H "Authorization: Bearer your_jwt_token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "employee_id": "EMP003",
-    "badge_number": "BADGE003",
-    "full_name": "Alice Johnson",
-    "phone_number": "+1234567892",
-    "hire_date": "2024-03-01"
-  }'
-```
-
-### Listing Security Personnel with Filters
-
-```bash
-curl -X GET "http://localhost:8000/api/administrator/security-personnel/?is_active=true&page=1&page_size=10" \
-  -H "Authorization: Bearer your_jwt_token"
-```
-
-### Updating Security Personnel
-
-```bash
-curl -X PATCH http://localhost:8000/api/administrator/security-personnel/b462e657-4d37-49c5-878d-02c0070f9fd5/update/ \
-  -H "Authorization: Bearer your_jwt_token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone_number": "+1234567899"
-  }'
-```
-
-### Soft Deleting Security Personnel
-
-```bash
-curl -X DELETE http://localhost:8000/api/administrator/security-personnel/b462e657-4d37-49c5-878d-02c0070f9fd5/delete/ \
-  -H "Authorization: Bearer your_jwt_token"
-```
-
-### Restoring Security Personnel
-
-```bash
-curl -X POST http://localhost:8000/api/administrator/security-personnel/b462e657-4d37-49c5-878d-02c0070f9fd5/restore/ \
-  -H "Authorization: Bearer your_jwt_token"
-```
-
-## File Structure
-
-```
-adminstrator/
-├── __init__.py
-├── admin.py              # Django admin configuration
-├── apps.py               # App configuration
-├── models.py             # SecurityPersonnel model
-├── serializers.py        # DRF serializers
-├── views.py              # API views
-├── urls.py               # URL routing
-├── permissions.py        # Custom permissions
-├── tests.py              # Unit tests
-├── README.md             # This documentation
-└── migrations/
-    ├── __init__.py
-    └── 0001_initial.py   # Initial migration
-```
-
-## Testing
-
-Run the tests for this module:
-
-```bash
-python manage.py test adminstrator
-```
-
-## Development Notes
-
-1. **UUID Primary Keys**: This module uses UUID primary keys instead of integer IDs for better security and scalability.
-
-2. **Soft Delete**: Records are not permanently deleted but marked with a `deleted_at` timestamp.
-
-3. **Validation**: The model includes constraints to ensure data integrity (e.g., termination date >= hire date).
-
-4. **Performance**: Database indexes are strategically placed on frequently queried fields.
-
-5. **Security**: All endpoints require JWT authentication and administrator role permissions.
-
-## Future Enhancements
-
-- [ ] Add bulk operations (bulk create, update, delete)
-- [ ] Implement audit logging for all operations
-- [ ] Add export functionality (CSV, PDF)
-- [ ] Implement advanced search with full-text search
-- [ ] Add file upload for profile pictures
-- [ ] Implement notification system for personnel changes
-
-## Troubleshooting
-
-### Common Issues
-
-1. **404 Errors**: Ensure you're using the correct UUID format in URLs
-2. **Permission Denied**: Verify JWT token is valid and user has administrator role
-3. **Validation Errors**: Check required fields and unique constraints
-4. **Database Errors**: Ensure migrations are applied and database is accessible
-
-### Debug Mode
-
-Set `DEBUG = True` in settings.py for detailed error messages during development.
 
 ---
 
-For more information, refer to the main project documentation or contact the development team.
+### 5. Delete Security Personnel (Soft Delete)
+**Endpoint:** `DELETE /api/administrator/security-personnel/<security_id>/delete/`
+
+**Description:** Soft delete security personnel (marks as deleted but keeps record)
+
+**URL Parameters:**
+- `security_id`: UUID of the security personnel
+
+**Success Response (200):**
+```json
+{
+    "message": "Security personnel soft deleted successfully",
+    "deleted_at": "2024-01-15T16:00:00.000000Z",
+    "is_active": false
+}
+```
+
+---
+
+### 6. Restore Security Personnel
+**Endpoint:** `POST /api/administrator/security-personnel/<security_id>/restore/`
+
+**Description:** Restore a previously soft-deleted security personnel
+
+**URL Parameters:**
+- `security_id`: UUID of the security personnel
+
+**Success Response (200):**
+```json
+{
+    "message": "Security personnel restored successfully",
+    "data": {
+        "security_id": "123e4567-e89b-12d3-a456-426614174000",
+        "employee_id": "EMP001",
+        "badge_number": "BADGE001",
+        "full_name": "John Smith",
+        "phone_number": "+1234567890",
+        "hire_date": "2024-01-15",
+        "termination_date": null,
+        "is_active": true,
+        "created_at": "2024-01-15T10:30:00.000000Z",
+        "updated_at": "2024-01-15T16:05:00.000000Z",
+        "deleted_at": null
+    }
+}
+```
+
+---
+
+## Common Error Responses
+
+### Authentication Errors
+```json
+// Missing token (401)
+{
+    "detail": "Authentication credentials were not provided."
+}
+
+// Invalid token (401)
+{
+    "detail": "Given token not valid for any token type"
+}
+
+// Not administrator (403)
+{
+    "detail": "You do not have permission to perform this action."
+}
+```
+
+### Resource Errors
+```json
+// Security personnel not found (404)
+{
+    "detail": "Not found."
+}
+
+// Validation errors (400)
+{
+    "employee_id": ["This field is required."],
+    "badge_number": ["Security personnel with this badge number already exists."]
+}
+
+// Cannot restore active record (400)
+{
+    "error": "Security personnel is not deleted and cannot be restored"
+}
+```
+
+---
+
+## Frontend Implementation Guide
+
+### Complete Workflow for Security Personnel Management
+
+#### 1. Get Admin JWT Token
+```javascript
+// Login first to get admin token
+const loginResponse = await fetch('http://localhost:8000/auth/login', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        username: 'admin_username',
+        password: 'admin_password',
+        user_type: 'administrator'
+    })
+});
+const { access } = await loginResponse.json();
+```
+
+#### 2. List Security Personnel with Search/Filter
+```javascript
+const listPersonnel = async (page = 1, search = '', isActive = null) => {
+    let url = `http://localhost:8000/api/administrator/security-personnel/?page=${page}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (isActive !== null) url += `&is_active=${isActive}`;
+    
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${access}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    return await response.json();
+};
+```
+
+#### 3. Create New Security Personnel
+```javascript
+const createPersonnel = async (personnelData) => {
+    const response = await fetch('http://localhost:8000/api/administrator/security-personnel/create/', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${access}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(personnelData)
+    });
+    return await response.json();
+};
+```
+
+#### 4. Update Security Personnel
+```javascript
+const updatePersonnel = async (securityId, updateData) => {
+    const response = await fetch(`http://localhost:8000/api/administrator/security-personnel/${securityId}/update/`, {
+        method: 'PATCH',
+        headers: {
+            'Authorization': `Bearer ${access}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+    });
+    return await response.json();
+};
+```
+
+#### 5. Delete Security Personnel
+```javascript
+const deletePersonnel = async (securityId) => {
+    const response = await fetch(`http://localhost:8000/api/administrator/security-personnel/${securityId}/delete/`, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `Bearer ${access}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    return await response.json();
+};
+```
+
+#### 6. Restore Security Personnel
+```javascript
+const restorePersonnel = async (securityId) => {
+    const response = await fetch(`http://localhost:8000/api/administrator/security-personnel/${securityId}/restore/`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${access}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    return await response.json();
+};
+```
+
+### Error Handling
+```javascript
+const handleApiResponse = async (response) => {
+    if (!response.ok) {
+        const error = await response.json();
+        if (response.status === 401) {
+            // Redirect to login
+            window.location.href = '/login';
+        } else if (response.status === 403) {
+            alert('Access denied. Administrator privileges required.');
+        } else {
+            console.error('API Error:', error);
+        }
+        throw new Error(error.detail || 'API request failed');
+    }
+    return await response.json();
+};
+```
+
+### Recommended UI Flow
+1. **Dashboard** → Display security personnel table with search/filter
+2. **Add New** → Form to create new personnel
+3. **View Details** → Show detailed personnel information
+4. **Edit** → Form to update personnel data
+5. **Delete** → Confirmation dialog then soft delete
+6. **Restore** → Option to restore deleted personnel
+
+This API provides complete CRUD functionality for managing security personnel in your Smart Access system! 🚀
