@@ -68,3 +68,52 @@ class PhysicalLocations(models.Model):
 
 
 
+class AccessGates(models.Model):
+    GATE_TYPE_CHOICES = [
+        ('entry', 'Entry'),
+        ('exit', 'Exit'),
+        ('bidirectional', 'Bidirectional'),
+    ]
+
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+        ('maintenance', 'Maintenance'),
+        ('error', 'Error'),
+    ]
+
+    gate_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    gate_code = models.CharField(max_length=20, unique=True)
+    gate_name = models.CharField(max_length=100)
+    location = models.ForeignKey(PhysicalLocations, on_delete=models.CASCADE)
+    gate_type = models.CharField(max_length=20, choices=GATE_TYPE_CHOICES, default='bidirectional')
+    hardware_id = models.CharField(max_length=100, unique=True)
+    ip_address = models.CharField(max_length=45, blank=True, null=True)
+    mac_address = models.CharField(max_length=17, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    emergency_override_enabled = models.BooleanField(default=False)
+    backup_power_available = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['gate_code'], name='idx_access_gates_code'),
+            models.Index(fields=['location'], name='idx_access_gates_location'),
+            models.Index(fields=['hardware_id'], name='idx_access_gates_hardware'),
+            models.Index(fields=['status'], name='idx_access_gates_status'),
+            models.Index(fields=['deleted_at'], name='idx_access_gates_deleted'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(gate_type__in=['entry', 'exit', 'bidirectional']),
+                name='check_access_gates_type'
+            ),
+            models.CheckConstraint(
+                check=models.Q(status__in=['active', 'inactive', 'maintenance', 'error']),
+                name='check_access_gates_status'
+            ),
+
+        ]
+
