@@ -6,8 +6,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from .models import SecurityPersonnel
-from .serializers import SecurityPersonnelSerializer
+from .models import SecurityPersonnel , PhysicalLocations, AccessGates
+from .serializers import SecurityPersonnelSerializer, PhysicalLocationsSerializer, AccessGatesSerializer
 from .permissions import IsAdministrator
 
 class SecurityPersonnelPagination(PageNumberPagination):
@@ -90,5 +90,150 @@ class SecurityPersonnelRestoreView(APIView): # for restoring soft-deleted securi
         serializer = SecurityPersonnelSerializer(instance)
         return Response({
             'message': 'Security personnel restored successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+# PhysicalLocations Views
+class PhysicalLocationsCreateView(generics.CreateAPIView):
+    queryset = PhysicalLocations.objects.all()
+    serializer_class = PhysicalLocationsSerializer
+    permission_classes = [IsAdministrator]
+
+class PhysicalLocationsListView(generics.ListAPIView):
+    queryset = PhysicalLocations.objects.all()
+    serializer_class = PhysicalLocationsSerializer
+    permission_classes = [IsAdministrator]
+    pagination_class = SecurityPersonnelPagination
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
+    filterset_fields = ['location_type', 'is_restricted']
+    search_fields = ['location_name']
+    ordering_fields = ['location_name', 'location_type', 'created_at']
+    ordering = ['-created_at']
+
+class PhysicalLocationsDetailView(generics.RetrieveAPIView):
+    queryset = PhysicalLocations.objects.all()
+    serializer_class = PhysicalLocationsSerializer
+    permission_classes = [IsAdministrator]
+    lookup_field = 'location_id'
+
+class PhysicalLocationsUpdateView(generics.UpdateAPIView):
+    queryset = PhysicalLocations.objects.all()
+    serializer_class = PhysicalLocationsSerializer
+    permission_classes = [IsAdministrator]
+    lookup_field = 'location_id'
+
+class PhysicalLocationsDeleteView(generics.DestroyAPIView):
+    queryset = PhysicalLocations.objects.all()
+    serializer_class = PhysicalLocationsSerializer
+    permission_classes = [IsAdministrator]
+    lookup_field = 'location_id'
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # Perform soft delete
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=['deleted_at'])
+        
+        return Response({
+            'message': 'Physical location soft deleted successfully',
+            'deleted_at': instance.deleted_at
+        }, status=status.HTTP_200_OK)
+
+class PhysicalLocationsRestoreView(APIView):
+    permission_classes = [IsAdministrator]
+    
+    def post(self, request, location_id):
+        try:
+            instance = PhysicalLocations.objects.get(location_id=location_id)
+        except PhysicalLocations.DoesNotExist:
+            return Response({
+                'error': 'Physical location not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        if instance.deleted_at is None:
+            return Response({
+                'error': 'Physical location is not deleted and cannot be restored'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        instance.deleted_at = None
+        instance.save(update_fields=['deleted_at'])
+        
+        serializer = PhysicalLocationsSerializer(instance)
+        return Response({
+            'message': 'Physical location restored successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+
+# AccessGates Views
+class AccessGatesCreateView(generics.CreateAPIView):
+    queryset = AccessGates.objects.all()
+    serializer_class = AccessGatesSerializer
+    permission_classes = [IsAdministrator]
+
+class AccessGatesListView(generics.ListAPIView):
+    queryset = AccessGates.objects.all()
+    serializer_class = AccessGatesSerializer
+    permission_classes = [IsAdministrator]
+    pagination_class = SecurityPersonnelPagination
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
+    filterset_fields = ['gate_type', 'status', 'location']
+    search_fields = ['gate_code', 'gate_name', 'hardware_id']
+    ordering_fields = ['gate_name', 'gate_code', 'created_at']
+    ordering = ['-created_at']
+
+class AccessGatesDetailView(generics.RetrieveAPIView):
+    queryset = AccessGates.objects.all()
+    serializer_class = AccessGatesSerializer
+    permission_classes = [IsAdministrator]
+    lookup_field = 'gate_id'
+
+class AccessGatesUpdateView(generics.UpdateAPIView):
+    queryset = AccessGates.objects.all()
+    serializer_class = AccessGatesSerializer
+    permission_classes = [IsAdministrator]
+    lookup_field = 'gate_id'
+
+class AccessGatesDeleteView(generics.DestroyAPIView):
+    queryset = AccessGates.objects.all()
+    serializer_class = AccessGatesSerializer
+    permission_classes = [IsAdministrator]
+    lookup_field = 'gate_id'
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # Perform soft delete
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=['deleted_at'])
+        
+        return Response({
+            'message': 'Access gate soft deleted successfully',
+            'deleted_at': instance.deleted_at
+        }, status=status.HTTP_200_OK)
+
+class AccessGatesRestoreView(APIView):
+    permission_classes = [IsAdministrator]
+    
+    def post(self, request, gate_id):
+        try:
+            instance = AccessGates.objects.get(gate_id=gate_id)
+        except AccessGates.DoesNotExist:
+            return Response({
+                'error': 'Access gate not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        if instance.deleted_at is None:
+            return Response({
+                'error': 'Access gate is not deleted and cannot be restored'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        instance.deleted_at = None
+        instance.save(update_fields=['deleted_at'])
+        
+        serializer = AccessGatesSerializer(instance)
+        return Response({
+            'message': 'Access gate restored successfully',
             'data': serializer.data
         }, status=status.HTTP_200_OK)
