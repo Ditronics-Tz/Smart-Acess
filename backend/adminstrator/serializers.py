@@ -23,3 +23,14 @@ class AccessGatesSerializer(serializers.ModelSerializer):
     class Meta:
         model = AccessGates
         fields = '__all__'
+
+class DatabaseBackupSerializer(serializers.Serializer):
+    status = serializers.CharField(read_only=True)
+    backup_file = serializers.CharField(read_only=True)
+
+class DatabaseRestoreSerializer(serializers.Serializer):
+    status = serializers.CharField(read_only=True)
+    message = serializers.CharField(read_only=True)
+
+class DatabaseBackupListSerializer(serializers.Serializer):
+    backups = serializers.ListField(child=serializers.CharField(), read_only=True)

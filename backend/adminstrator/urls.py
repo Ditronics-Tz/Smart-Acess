@@ -5,7 +5,8 @@ from .views import (
     PhysicalLocationsCreateView, PhysicalLocationsListView, PhysicalLocationsDetailView,
     PhysicalLocationsUpdateView, PhysicalLocationsDeleteView, PhysicalLocationsRestoreView,
     AccessGatesCreateView, AccessGatesListView, AccessGatesDetailView,
-    AccessGatesUpdateView, AccessGatesDeleteView, AccessGatesRestoreView
+    AccessGatesUpdateView, AccessGatesDeleteView, AccessGatesRestoreView,
+    DatabaseBackupView, DatabaseRestoreView, DatabaseBackupListView  # Added for listing backups
 )
 
 urlpatterns = [
@@ -32,4 +33,9 @@ urlpatterns = [
     path('api/administrator/access-gates/<uuid:gate_id>/update/', AccessGatesUpdateView.as_view(), name='access-gates-update'),  # PUT & PATCH by ID
     path('api/administrator/access-gates/<uuid:gate_id>/delete/', AccessGatesDeleteView.as_view(), name='access-gates-delete'),  # DELETE by ID (soft delete)
     path('api/administrator/access-gates/<uuid:gate_id>/restore/', AccessGatesRestoreView.as_view(), name='access-gates-restore'),
+
+    # System Settings URLs
+    path('api/administrator/backup/', DatabaseBackupView.as_view(), name='database-backup'),  # POST
+    path('api/administrator/restore/<str:backup_filename>/', DatabaseRestoreView.as_view(), name='database-restore'),  # POST by filename
+    path('api/administrator/backups/', DatabaseBackupListView.as_view(), name='database-backup-list'),  # GET
 ]

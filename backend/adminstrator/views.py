@@ -9,6 +9,9 @@ from django.shortcuts import get_object_or_404
 from .models import SecurityPersonnel , PhysicalLocations, AccessGates
 from .serializers import SecurityPersonnelSerializer, PhysicalLocationsSerializer, AccessGatesSerializer
 from .permissions import IsAdministrator
+import os
+from datetime import datetime
+import subprocess
 
 class SecurityPersonnelPagination(PageNumberPagination):
     page_size = 20
@@ -237,3 +240,56 @@ class AccessGatesRestoreView(APIView):
             'message': 'Access gate restored successfully',
             'data': serializer.data
         }, status=status.HTTP_200_OK)
+    
+
+# System Settings Views
+class DatabaseBackupView(APIView):
+    permission_classes = [IsAdministrator]
+
+    def post(self, request):
+        db_name = os.getenv('DB_NAME')
+        db_user = os.getenv('DB_USER')
+        backup_dir = os.path.join(os.path.dirname(__file__), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = os.path.join(backup_dir, f"backup_{timestamp}.sql")
+
+        try:
+            subprocess.run(
+                ["pg_dump", "-U", db_user, db_name, "-f", backup_file],
+                check=True
+            )
+            return Response({"status": "success", "backup_file": backup_file}, status=status.HTTP_200_OK)
+        except subprocess.CalledProcessError as e:
+            return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class DatabaseRestoreView(APIView):
+    permission_classes = [IsAdministrator]
+
+    def post(self, request, backup_filename):
+        db_name = os.getenv('DB_NAME')
+        db_user = os.getenv('DB_USER')
+        backup_dir = os.path.join(os.path.dirname(__file__), "backups")
+        backup_path = os.path.join(backup_dir, backup_filename)
+        if not os.path.exists(backup_path):
+            return Response({"status": "error", "message": "Backup not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            subprocess.run(
+                ["psql", "-U", db_user, "-d", db_name, "-f", backup_path],
+                check=True
+            )
+            return Response({"status": "success", "message": "Database restored"}, status=status.HTTP_200_OK)
+        except subprocess.CalledProcessError as e:
+            return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class DatabaseBackupListView(APIView):
+    permission_classes = [IsAdministrator]
+
+    def get(self, request):
+        backup_dir = os.path.join(os.path.dirname(__file__), "backups")
+        if not os.path.exists(backup_dir):
+            return Response({"backups": []}, status=status.HTTP_200_OK)
+        
+        backups = [f for f in os.listdir(backup_dir) if f.endswith('.sql')]
+        return Response({"backups": backups}, status=status.HTTP_200_OK)
