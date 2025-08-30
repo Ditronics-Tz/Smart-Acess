@@ -21,7 +21,7 @@ class SecurityPersonnelCreateView(generics.CreateAPIView):
 	permission_classes = [IsAdministrator]
 
 class SecurityPersonnelListView(generics.ListAPIView): #list of secuirty perosnnel w filter
-    queryset = SecurityPersonnel.objects.all()
+    queryset = SecurityPersonnel.objects.filter(deleted_at__isnull=True)  # Exclude soft-deleted
     serializer_class = SecurityPersonnelSerializer
     permission_classes = [IsAdministrator]
     pagination_class = SecurityPersonnelPagination
@@ -101,7 +101,7 @@ class PhysicalLocationsCreateView(generics.CreateAPIView):
     permission_classes = [IsAdministrator]
 
 class PhysicalLocationsListView(generics.ListAPIView):
-    queryset = PhysicalLocations.objects.all()
+    queryset = PhysicalLocations.objects.filter(deleted_at__isnull=True)  # Exclude soft-deleted
     serializer_class = PhysicalLocationsSerializer
     permission_classes = [IsAdministrator]
     pagination_class = SecurityPersonnelPagination
@@ -173,7 +173,7 @@ class AccessGatesCreateView(generics.CreateAPIView):
     permission_classes = [IsAdministrator]
 
 class AccessGatesListView(generics.ListAPIView):
-    queryset = AccessGates.objects.all()
+    queryset = AccessGates.objects.filter(deleted_at__isnull=True)  # Exclude soft-deleted
     serializer_class = AccessGatesSerializer
     permission_classes = [IsAdministrator]
     pagination_class = SecurityPersonnelPagination
