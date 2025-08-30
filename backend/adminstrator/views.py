@@ -249,15 +249,19 @@ class DatabaseBackupView(APIView):
     def post(self, request):
         db_name = os.getenv('DB_NAME')
         db_user = os.getenv('DB_USER')
+        db_password = os.getenv('DB_PASSWORD')
         backup_dir = os.path.join(os.path.dirname(__file__), "backups")
         os.makedirs(backup_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_file = os.path.join(backup_dir, f"backup_{timestamp}.sql")
 
+        env = os.environ.copy()
+        env['PGPASSWORD'] = db_password  # Set password
+
         try:
             subprocess.run(
                 ["pg_dump", "-U", db_user, db_name, "-f", backup_file],
-                check=True
+                check=True, env=env
             )
             return Response({"status": "success", "backup_file": backup_file}, status=status.HTTP_200_OK)
         except subprocess.CalledProcessError as e:
@@ -269,15 +273,19 @@ class DatabaseRestoreView(APIView):
     def post(self, request, backup_filename):
         db_name = os.getenv('DB_NAME')
         db_user = os.getenv('DB_USER')
+        db_password = os.getenv('DB_PASSWORD')
         backup_dir = os.path.join(os.path.dirname(__file__), "backups")
         backup_path = os.path.join(backup_dir, backup_filename)
         if not os.path.exists(backup_path):
             return Response({"status": "error", "message": "Backup not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        env = os.environ.copy()
+        env['PGPASSWORD'] = db_password  # Set password
+
         try:
             subprocess.run(
                 ["psql", "-U", db_user, "-d", db_name, "-f", backup_path],
-                check=True
+                check=True, env=env
             )
             return Response({"status": "success", "message": "Database restored"}, status=status.HTTP_200_OK)
         except subprocess.CalledProcessError as e:
