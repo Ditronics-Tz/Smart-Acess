@@ -17,6 +17,9 @@ class PhysicalLocationsSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class AccessGatesSerializer(serializers.ModelSerializer):
+    location_name = serializers.CharField(source='location.location_name', read_only=True)
+    location_type = serializers.CharField(source='location.location_type', read_only=True)
+
     class Meta:
         model = AccessGates
         fields = '__all__'
