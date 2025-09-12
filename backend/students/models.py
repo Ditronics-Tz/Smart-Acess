@@ -46,9 +46,6 @@ class Student(models.Model):
     )
 
     # Other Important Fields
-    year_of_study = models.IntegerField(null=True, blank=True)
-    admission_date = models.DateField(null=True, blank=True)
-    expected_graduation_date = models.DateField(null=True, blank=True)
     
     # System and Auditing Fields
     is_active = models.BooleanField(default=True)
