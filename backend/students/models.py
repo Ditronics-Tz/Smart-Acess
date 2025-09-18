@@ -22,22 +22,27 @@ class Student(models.Model):
     student_uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     # Personal Information
-    surname = models.CharField(max_length=100)
-    first_name = models.CharField(max_length=100)
-    middle_name = models.CharField(max_length=100, blank=True, null=True)
-    email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
-
+    surname = models.CharField(max_length=100, help_text="Your Surname")
+    first_name = models.CharField(max_length=100, help_text="Your First Name")
+    middle_name = models.CharField(max_length=100, blank=True, null=True, help_text="Your Middle Name")
+    mobile_phone = models.CharField(max_length=15, blank=True, null=True, help_text="Your Active Mobile Phone number")
+    
     # Academic Information
-    registration_number = models.CharField(max_length=20, unique=True)
-    department = models.CharField(max_length=255)
-    program = models.CharField(max_length=255)
-    soma_class_code = models.CharField(max_length=20, blank=True, null=True)
+    registration_number = models.CharField(max_length=20, unique=True, help_text="Your Registration Number")
+    department = models.CharField(max_length=255, help_text="Your Department")
+    soma_class_code = models.CharField(
+        max_length=20, 
+        blank=True, 
+        null=True, 
+        help_text="Your SOMA Class (e.g., OD24CE, BENG24EE, ME24SE etc)"
+    )
     
     # Status Fields
     academic_year_status = models.CharField(
         max_length=20,
         choices=ACADEMIC_YEAR_STATUS_CHOICES,
-        default='Continuing'
+        default='Continuing',
+        help_text="Your Status in Academic Year 2024/25"
     )
     student_status = models.CharField(
         max_length=20,
@@ -60,5 +65,7 @@ class Student(models.Model):
         indexes = [
             models.Index(fields=['registration_number']),
             models.Index(fields=['surname', 'first_name']),
+            models.Index(fields=['mobile_phone']),
+            models.Index(fields=['department']),
         ]
 
