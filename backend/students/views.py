@@ -107,7 +107,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         methods=['post'], 
         parser_classes=[MultiPartParser, FormParser],
         url_path='upload-csv',
-        permission_classes=[CanManageStudents]  # Both user types can upload
+        permission_classes=[CanManageStudents]
     )
     def upload_csv(self, request):
         """
@@ -155,35 +155,49 @@ class StudentViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Create students in a transaction
-            with transaction.atomic():
-                students = []
-                for row_data in valid_rows:
-                    students.append(Student(**row_data))
-                
-                # Bulk create all students
-                created_students = Student.objects.bulk_create(students)
-                
-                logger.info(f"Successfully created {len(created_students)} students via CSV upload by {user_info}")
-                
-                return Response(
-                    {
-                        'success': True,
-                        'message': f'Successfully created {len(created_students)} students',
-                        'data': {
-                            'total_created': len(created_students),
-                            'students': StudentSerializer(created_students, many=True).data,
-                            'uploaded_by': {
-                                'username': request.user.username,
-                                'user_type': request.user.user_type,
-                                'full_name': getattr(request.user, 'full_name', request.user.username),
-                                'upload_timestamp': timezone.now().isoformat()
-                            }
+            # Create students one by one to handle duplicates
+            created_students = []
+            skipped_records = []
+            
+            for row_data in valid_rows:
+                reg_number = row_data.get('registration_number')
+                try:
+                    # Check if student with this registration number already exists
+                    if Student.objects.filter(registration_number=reg_number).exists():
+                        skipped_records.append(reg_number)
+                        continue
+                        
+                    # Create the student
+                    student = Student(**row_data)
+                    student.save()
+                    created_students.append(student)
+                except Exception as e:
+                    logger.error(f"Error creating student with reg number {reg_number}: {str(e)}")
+                    skipped_records.append(reg_number)
+            
+            logger.info(f"Successfully created {len(created_students)} students via CSV upload by {user_info}")
+            logger.info(f"Skipped {len(skipped_records)} duplicate records")
+            
+            return Response(
+                {
+                    'success': True,
+                    'message': f'Successfully created {len(created_students)} students, skipped {len(skipped_records)} duplicates',
+                    'data': {
+                        'total_created': len(created_students),
+                        'total_skipped': len(skipped_records),
+                        'skipped_registration_numbers': skipped_records,
+                        'students': StudentSerializer(created_students, many=True).data,
+                        'uploaded_by': {
+                            'username': request.user.username,
+                            'user_type': request.user.user_type,
+                            'full_name': getattr(request.user, 'full_name', request.user.username),
+                            'upload_timestamp': timezone.now().isoformat()
                         }
-                    },
-                    status=status.HTTP_201_CREATED
-                )
-                
+                    }
+                },
+                status=status.HTTP_201_CREATED
+            )
+            
         except Exception as e:
             logger.error(f"Unexpected error during CSV upload by {user_info}: {str(e)}")
             return Response(
@@ -200,7 +214,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         methods=['get'], 
         url_path='csv-template',
         permission_classes=[CanManageStudents],
-        renderer_classes=[CSVRenderer]  # Add this line
+        renderer_classes=[CSVRenderer]
     )
     def csv_template(self, request):
         """
@@ -216,31 +230,29 @@ class StudentViewSet(viewsets.ModelViewSet):
         output = io.StringIO()
         writer = csv.writer(output)
         
-        # Write headers
+        # Write headers matching the expected format
         headers = [
-            'surname',
-            'first_name', 
-            'middle_name',
-            'mobile_phone',
-            'registration_number',
-            'department',
-            'soma_class_code',
-            'academic_year_status',
-            'student_status'
+            'Your Registration Number:',
+            'Your Surname:',
+            'Your First_Name:',
+            'Your Middle_Name',
+            'Your Active Mobile Phone number:',
+            'Your Department',
+            'Your Status in Academic Year 2024/25:',
+            'Your SOMA Class(eg OD24CE,BENG24EE,ME24SE etc):'
         ]
         writer.writerow(headers)
         
         # Write example row
         example_row = [
+            '240126000000',  # Plain number format
             'Doe',
             'John',
             'Michael',
-            '+255712345678',
-            'REG2024001',
-            'Computer Science',
-            'CS2024A',
+            '255712345678',
+            'CE',
             'Continuing',
-            'Enrolled'
+            'BENG24CE'
         ]
         writer.writerow(example_row)
         
