@@ -145,7 +145,7 @@ class AccessControlViewSet(viewsets.ModelViewSet):
         denial_reason = None
         
         try:
-            # SIMPLE: One optimized query
+            # SIMPLE: One optimized query using actual model fields
             card = Card.objects.select_related('student').filter(
                 rfid_number=rfid_number
             ).only(
@@ -153,7 +153,7 @@ class AccessControlViewSet(viewsets.ModelViewSet):
                 'student__first_name', 'student__surname', 
                 'student__is_active', 'student__registration_number',
                 'student__department', 'student__student_status',
-                'student__email', 'student__phone_number'
+                'student__mobile_phone', 'student__soma_class_code'
             ).first()
             
             if not card:
@@ -173,9 +173,12 @@ class AccessControlViewSet(viewsets.ModelViewSet):
                 message = "Access granted"
                 student_name = f"{card.student.first_name} {card.student.surname}"
         
-        except Exception:
+        except Exception as e:
             denial_reason = 'system_error'
-            message = "System error"
+            message = f"System error: {str(e)}"
+            # Log the actual error for debugging
+            logger.error(f"Error in access check for RFID {rfid_number}: {str(e)}")
+            print(f"DEBUG: Error in access check: {str(e)}")  # For immediate debugging
         
         # Calculate response time
         response_time_ms = int((timezone.now() - start_time).total_seconds() * 1000)
@@ -201,16 +204,24 @@ class AccessControlViewSet(viewsets.ModelViewSet):
         }
         
         if access_granted and student_name and card:
-            response_data['student'] = {
-                'name': student_name,
-                'first_name': card.student.first_name,
-                'surname': card.student.surname,
-                'registration_number': card.student.registration_number,
-                'department': card.student.department,
-                'status': card.student.student_status,
-                'email': getattr(card.student, 'email', None),
-                'phone': getattr(card.student, 'phone_number', None)
-            }
+            try:
+                response_data['student'] = {
+                    'name': student_name,
+                    'first_name': card.student.first_name,
+                    'surname': card.student.surname,
+                    'registration_number': card.student.registration_number,
+                    'department': card.student.department,
+                    'soma_class_code': getattr(card.student, 'soma_class_code', None),
+                    'student_status': card.student.student_status,
+                    'academic_year_status': getattr(card.student, 'academic_year_status', None),
+                    'mobile_phone': getattr(card.student, 'mobile_phone', None)
+                }
+            except Exception as e:
+                # If student data fails, just include basic info
+                response_data['student'] = {
+                    'name': student_name
+                }
+                print(f"DEBUG: Error accessing student data: {str(e)}")
         
         return Response(response_data, status=status.HTTP_200_OK)
 
