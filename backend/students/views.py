@@ -5,7 +5,9 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from .renderers import CSVRenderer  # Import from the correctly named file
 from django.db import transaction
+from django.utils import timezone  # Add this missing import
 import logging
 
 logger = logging.getLogger(__name__)
@@ -197,24 +199,24 @@ class StudentViewSet(viewsets.ModelViewSet):
         detail=False, 
         methods=['get'], 
         url_path='csv-template',
-        permission_classes=[CanManageStudents]  # Both user types can download template
+        permission_classes=[CanManageStudents],
+        renderer_classes=[CSVRenderer]  # Add this line
     )
     def csv_template(self, request):
         """
         Download a CSV template file for student upload.
-        Available to both Administrators and Registration Officers.
         """
         from django.http import HttpResponse
         import csv
+        import io
         
         logger.info(f"CSV template downloaded by {request.user.username} ({request.user.user_type})")
         
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="student_upload_template.csv"'
+        # Create a StringIO object to write CSV data
+        output = io.StringIO()
+        writer = csv.writer(output)
         
-        writer = csv.writer(response)
-        
-        # Write header
+        # Write headers
         headers = [
             'surname',
             'first_name', 
@@ -241,6 +243,17 @@ class StudentViewSet(viewsets.ModelViewSet):
             'Enrolled'
         ]
         writer.writerow(example_row)
+        
+        # Get the CSV content
+        csv_content = output.getvalue()
+        output.close()
+        
+        # Create response
+        response = HttpResponse(
+            csv_content,
+            content_type='text/csv',
+        )
+        response['Content-Disposition'] = 'attachment; filename=student_upload_template.csv'
         
         return response
 

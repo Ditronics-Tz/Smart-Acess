@@ -6,5 +6,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('auth/', include("authenication.urls")),
     path('', include('adminstrator.urls')),
-    path('api/', include('students.urls')),  # Include the students app URLs
+    path('api/students/', include('students.urls')),  # Include the students app URLs under /api/students/
 ]
