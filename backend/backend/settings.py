@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'adminstrator',
     'django_filters',
     'students',
+    'cardmanage',
 ]
 
 MIDDLEWARE = [
