@@ -21,7 +21,8 @@ class Card(models.Model):
     rfid_number = models.CharField(
         max_length=50,
         unique=True,
-        help_text="RFID number of the physical card"
+        help_text="RFID number of the physical card",
+        db_index=True  # Keep this for fast lookups
     )
 
     student = models.OneToOneField(
@@ -58,7 +59,7 @@ class Card(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['rfid_number']),
+            models.Index(fields=['rfid_number']),  # Primary lookup index
             models.Index(fields=['card_uuid']),
             models.Index(fields=['is_active']),
             models.Index(fields=['student']),
