@@ -31,7 +31,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         Instantiate and return the list of permissions that this view requires.
         Customize permissions per action for better security control.
         """
-        if self.action in ['list', 'retrieve', 'create', 'upload_csv', 'csv_template', 'validation_info']:
+        if self.action in ['list', 'retrieve', 'create', 'upload_csv', 'csv_template', 'validation_info', 'upload_photo']:
             # Both administrators and registration officers can access these
             permission_classes = [CanManageStudents]
         elif self.action in ['update', 'partial_update', 'destroy']:
@@ -99,6 +99,14 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'can_modify': request.user.user_type == 'administrator',
                 'can_delete': request.user.user_type == 'administrator'
             }
+            
+            # Add photo information if exists
+            student = self.get_object()
+            if hasattr(student, 'photo') and student.photo and student.photo.photo:
+                response.data['photo'] = {
+                    'url': request.build_absolute_uri(student.photo.photo.url),
+                    'uploaded_at': student.photo.uploaded_at
+                }
         
         return response
 
@@ -349,6 +357,10 @@ class StudentViewSet(viewsets.ModelViewSet):
                     {'success': False, 'error': 'File size too large. Maximum size is 5MB.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            
+            # Rename the file to use student UUID
+            extension = 'jpg' if photo_file.content_type in ['image/jpeg', 'image/jpg'] else 'png'
+            photo_file.name = f"{student.student_uuid}.{extension}"
             
             # Create or update StudentPhoto
             student_photo, created = StudentPhoto.objects.get_or_create(

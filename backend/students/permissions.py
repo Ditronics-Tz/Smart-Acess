@@ -46,7 +46,7 @@ class CanManageStudents(BasePermission):
         # Registration Officers have limited access
         if request.user.user_type == 'registration_officer':
             # Allow specific actions for registration officers
-            allowed_actions = ['list', 'retrieve', 'create', 'upload_csv', 'csv_template', 'validation_info']
+            allowed_actions = ['list', 'retrieve', 'create', 'upload_csv', 'csv_template', 'validation_info', 'upload_photo']
             
             # Check if this is a custom action
             if hasattr(view, 'action') and view.action in allowed_actions:
@@ -74,7 +74,13 @@ class CanManageStudents(BasePermission):
             return True
             
         # Registration Officers can only view individual students, not modify/delete
+        # But allow POST for upload-photo action
         if request.user.user_type == 'registration_officer':
-            return request.method in ['GET', 'HEAD', 'OPTIONS']
+            if request.method in ['GET', 'HEAD', 'OPTIONS']:
+                return True
+            # Allow POST for photo upload
+            if request.method == 'POST' and 'upload-photo' in request.path:
+                return True
+            return False
             
         return False
