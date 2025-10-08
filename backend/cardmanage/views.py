@@ -1,20 +1,35 @@
 from django.shortcuts import render
+from django.http import HttpResponse
 from .permissions import IsAdministrator, CanManageCards
-from .models import Card
+from .models import Card, IDCardPrintLog, IDCardVerificationLog
 from .serializers import (
     CardSerializer, CardCreateSerializer, CardUpdateSerializer, 
     CardListSerializer, StudentWithoutCardSerializer
 )
+from .pdf_service import IDCardPDFGenerator
 from students.models import Student
 from rest_framework import viewsets, status, filters
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from rest_framework.renderers import BaseRenderer
 from django.db.models import Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class PassthroughRenderer(BaseRenderer):
+    """
+    Return data as-is. View should supply a Response.
+    """
+    media_type = '*/*'
+    format = None
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
 
 
 class CardViewSet(viewsets.ModelViewSet):
@@ -411,3 +426,117 @@ class CardViewSet(viewsets.ModelViewSet):
                 'timestamp': timezone.now().isoformat()
             }
         }, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=['get', 'post'],
+        url_path='print-card',
+        permission_classes=[CanManageCards],
+        renderer_classes=[PassthroughRenderer]
+    )
+    def print_card(self, request, card_uuid=None):
+        """
+        Generate PDF for ID card printing.
+        Available to both Administrators and Registration Officers.
+        """
+        try:
+            card = self.get_object()
+            student = card.student
+            
+            # Generate PDF
+            pdf_generator = IDCardPDFGenerator(student, card)
+            pdf_buffer = pdf_generator.generate()
+            
+            # Log the print action
+            IDCardPrintLog.objects.create(
+                card=card,
+                student=student,
+                printed_by=request.user.username,
+                user_type=request.user.user_type,
+                pdf_generated=True
+            )
+            
+            user_info = f"{request.user.username} ({request.user.user_type})"
+            logger.info(f"ID card PDF generated for {student.registration_number} by {user_info}")
+            
+            # Return PDF as download
+            response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="ID_Card_{student.registration_number}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating ID card PDF: {str(e)}")
+            return Response(
+                {'success': False, 'error': f'Failed to generate ID card PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def verify_student(request, student_uuid):
+    """
+    Public endpoint to verify student details via QR code or direct link.
+    Returns minimal student information for verification purposes.
+    """
+    try:
+        student = Student.objects.get(student_uuid=student_uuid, is_active=True)
+        
+        # Check if student has a card
+        has_card = hasattr(student, 'card') and student.card is not None
+        
+        # Log the verification
+        ip_address = request.META.get('REMOTE_ADDR')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        
+        IDCardVerificationLog.objects.create(
+            student=student,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            verification_source='qr_scan'
+        )
+        
+        # Build photo URL if exists
+        photo_url = None
+        if hasattr(student, 'photo') and student.photo and student.photo.photo:
+            photo_url = request.build_absolute_uri(student.photo.photo.url)
+        
+        # Return only necessary information for ID card verification
+        verification_data = {
+            'success': True,
+            'verified': True,
+            'student': {
+                'registration_number': student.registration_number,
+                'full_name': f"{student.first_name} {student.surname} {student.middle_name or ''}".strip(),
+                'department': student.department,
+                'program': "BACHELOR OF ENGINEERING",  # You may want to add this to student model
+                'class_code': student.soma_class_code,
+                'status': student.student_status,
+                'academic_status': student.academic_year_status,
+                'photo_url': photo_url,
+                'has_card': has_card,
+                'card_active': student.card.is_active if has_card else False,
+            },
+            'verified_at': timezone.now().isoformat(),
+            'institution': 'DAR ES SALAAM INSTITUTE OF TECHNOLOGY'
+        }
+        
+        logger.info(f"Student verification: {student.registration_number} from IP {ip_address}")
+        
+        return Response(verification_data, status=status.HTTP_200_OK)
+        
+    except Student.DoesNotExist:
+        logger.warning(f"Failed verification attempt for UUID: {student_uuid}")
+        return Response({
+            'success': False,
+            'verified': False,
+            'message': 'Student not found or inactive.'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error during verification: {str(e)}")
+        return Response({
+            'success': False,
+            'verified': False,
+            'message': 'Verification failed.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

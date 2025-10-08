@@ -124,7 +124,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Africa/Dar_es_Salaam'
 
 USE_I18N = True
 
@@ -207,3 +207,6 @@ SIMPLE_JWT = {
     'USER_ID_FIELD': 'id',  # Use your UUID field
     'USER_ID_CLAIM': 'user_id',
 }
+
+# Frontend URL for QR code verification
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
