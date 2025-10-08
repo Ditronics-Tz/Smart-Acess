@@ -18,8 +18,8 @@ class IDCardPDFGenerator:
     """Generate ID Card PDF with front and back sides"""
     
     # CR80 Card Size (Credit Card Standard)
-    CARD_WIDTH = 85.6 * mm
-    CARD_HEIGHT = 53.98 * mm
+    CARD_WIDTH = 65 * mm
+    CARD_HEIGHT = 100.00 * mm
     
     # Colors matching your design
     BG_DARK = HexColor('#1a1a1a')
@@ -76,11 +76,30 @@ class IDCardPDFGenerator:
             # Check if student has photo relation
             if hasattr(self.student, 'photo') and self.student.photo and self.student.photo.photo:
                 photo_path = self.student.photo.photo.path
+
                 if os.path.exists(photo_path):
-                    return ImageReader(photo_path)
+                    try:
+                        # Load image with PIL and convert to RGB
+                        with Image.open(photo_path) as img:
+                            img.verify()  # Verify the image is valid
+
+                        # Re-open the image (verify closes it)
+                        with Image.open(photo_path) as img:
+                            # Convert to RGB if necessary
+                            if img.mode != 'RGB':
+                                img = img.convert('RGB')
+
+                            # Create a BytesIO buffer for the image
+                            img_buffer = BytesIO()
+                            img.save(img_buffer, format='JPEG')
+                            img_buffer.seek(0)
+
+                            return ImageReader(img_buffer)
+                    except Exception as img_error:
+                        pass
         except Exception as e:
             pass
-        
+
         # Create placeholder with initials if no photo
         img = Image.new('RGB', (300, 300), color=(73, 109, 137))
         return ImageReader(img)
@@ -137,52 +156,78 @@ class IDCardPDFGenerator:
         
         # Photo circle
         photo_x = x_offset + self.CARD_WIDTH/2
-        photo_y = y_offset + self.CARD_HEIGHT - 25*mm
-        photo_radius = 12*mm
+        photo_y = y_offset + self.CARD_HEIGHT - 30*mm
+        photo_radius = 15*mm
         
-        # Yellow border
+        # Yellow border circle
         c.setStrokeColor(self.YELLOW)
-        c.setLineWidth(1.5*mm)
+        c.setLineWidth(2*mm)
         c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=0)
         
-        # Photo
+        # Photo - draw with circular clipping
         try:
             photo = self.get_student_photo()
+            # Save graphics state
+            c.saveState()
+            
+            # Create circular clipping path
+            p = c.beginPath()
+            p.circle(photo_x, photo_y, photo_radius - 1*mm)
+            c.clipPath(p, stroke=0, fill=0)
+            
+            # Draw the photo
+            photo_size = (photo_radius - 1*mm) * 2
             c.drawImage(
                 photo,
-                photo_x - photo_radius + 1.5*mm,
-                photo_y - photo_radius + 1.5*mm,
-                width=(photo_radius - 1.5*mm) * 2,
-                height=(photo_radius - 1.5*mm) * 2,
-                mask='auto'
+                photo_x - (photo_radius - 1*mm),
+                photo_y - (photo_radius - 1*mm),
+                width=photo_size,
+                height=photo_size,
+                preserveAspectRatio=True
             )
-        except:
-            pass  # Skip if photo fails
+            
+            # Restore graphics state
+            c.restoreState()
+        except Exception as e:
+            # Draw placeholder if photo fails
+            c.setFillColor(HexColor('#496d89'))
+            c.circle(photo_x, photo_y, photo_radius - 1*mm, stroke=0, fill=1)
         
         # Student Name
-        c.setFont("Helvetica-Bold", 9)
-        full_name = f"{self.student.surname} {self.student.first_name} {self.student.middle_name}"
+        c.setFont("Helvetica-Bold", 8)
+        # Build full name with proper handling of middle name
+        middle_name = f" {self.student.middle_name}" if self.student.middle_name else ""
+        full_name = f"{self.student.surname} {self.student.first_name}{middle_name}"
+        
+        # Handle long names
+        if len(full_name) > 25:
+            c.setFont("Helvetica-Bold", 7)
+        
         c.drawCentredString(
             x_offset + self.CARD_WIDTH/2,
-            y_offset + 20*mm,
+            y_offset + self.CARD_HEIGHT - 53*mm,
             full_name.upper()
         )
         
         # Student Details
-        details_x = x_offset + 8*mm
-        details_y = y_offset + 16*mm
-        line_height = 3.5*mm
+        details_x = x_offset + 5*mm
+        details_y = y_offset + self.CARD_HEIGHT - 60*mm
+        line_height = 4*mm
+        
+        # Use card dates if available, otherwise use student creation date
+        issued_date = self.card.issued_date if self.card else self.student.created_at
+        expiry_date = self.card.expiry_date if (self.card and self.card.expiry_date) else (issued_date + timedelta(days=1460))
         
         details = [
-            ("REG NO:", self.student.registration_number),
-            ("GENDER:", "MALE"),  # You should get this from student model
-            ("PROGRAM:", "BACHELOR OF ENGINEERING IN\n           COMPUTER ENGINEERING"),
-            ("CLASS:", self.student.soma_class_code),
-            ("ISSUED:", self.student.created_at.strftime("%d-%m-%Y")),
-            ("EXPIRE:", (self.student.created_at + timedelta(days=1460)).strftime("%d-%m-%Y")),
+            ("REG NO:", self.student.registration_number or "N/A"),
+            ("DEPT:", self.student.department or "N/A"),
+            ("CLASS:", self.student.soma_class_code or "N/A"),
+            ("STATUS:", self.student.academic_year_status or "N/A"),
+            ("ISSUED:", issued_date.strftime("%d-%m-%Y")),
+            ("EXPIRE:", expiry_date.strftime("%d-%m-%Y")),
         ]
         
-        c.setFont("Helvetica-Bold", 6)
+        c.setFont("Helvetica-Bold", 7)
         c.setFillColor(self.LIGHT_BLUE)
         
         current_y = details_y
@@ -191,18 +236,21 @@ class IDCardPDFGenerator:
             c.drawString(details_x, current_y, label)
             
             c.setFillColor(white)
-            c.setFont("Helvetica", 6)
+            c.setFont("Helvetica", 7)
             
-            if '\n' in value:  # Multi-line text (like PROGRAM)
-                lines = value.split('\n')
+            # Ensure value is a string
+            value_str = str(value) if value else "N/A"
+            
+            if '\n' in value_str:  # Multi-line text
+                lines = value_str.split('\n')
                 for line in lines:
-                    c.drawString(details_x + 18*mm, current_y, line)
-                    current_y -= 2.5*mm
+                    c.drawString(details_x + 15*mm, current_y, line)
+                    current_y -= 3*mm
             else:
-                c.drawString(details_x + 18*mm, current_y, value)
-                current_y -= line_height
+                c.drawString(details_x + 15*mm, current_y, value_str)
             
-            c.setFont("Helvetica-Bold", 6)
+            current_y -= line_height
+            c.setFont("Helvetica-Bold", 7)
         
         # DOI Code (bottom right) - Auto-generated
         doi_code = self.generate_doi_code()

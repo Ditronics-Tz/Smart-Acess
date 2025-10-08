@@ -40,7 +40,7 @@ class CardViewSet(viewsets.ModelViewSet):
     - Administrators: Full CRUD access to all card operations
     - Registration Officers: Can view, create, and manage cards
     """
-    queryset = Card.objects.all().select_related('student').order_by('-created_at')
+    queryset = Card.objects.all().select_related('student').prefetch_related('student__photo').order_by('-created_at')
     serializer_class = CardSerializer
     permission_classes = [CanManageCards]
     lookup_field = 'card_uuid'
