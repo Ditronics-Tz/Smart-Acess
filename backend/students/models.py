@@ -69,3 +69,12 @@ class Student(models.Model):
             models.Index(fields=['department']),
         ]
 
+
+class StudentPhoto(models.Model):
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='photo')
+    photo = models.ImageField(upload_to='student_photos/', blank=True, null=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Photo for {self.student}"
+

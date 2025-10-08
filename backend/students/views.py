@@ -1,5 +1,5 @@
 from .permissions import IsAdministrator, CanManageStudents
-from .models import Student
+from .models import Student, StudentPhoto
 from .serializers import StudentSerializer, StudentCSVUploadSerializer, StudentBulkCreateSerializer
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -308,6 +308,88 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'can_delete_students': request.user.user_type == 'administrator'
             }
         })
+
+    @action(
+        detail=True,
+        methods=['post'],
+        parser_classes=[MultiPartParser, FormParser],
+        url_path='upload-photo',
+        permission_classes=[CanManageStudents]
+    )
+    def upload_photo(self, request, student_uuid=None):
+        """
+        Upload a photo for a specific student.
+        Available to both Administrators and Registration Officers.
+        """
+        try:
+            # Get the student (already handled by get_object in ViewSet)
+            student = self.get_object()
+            
+            # Check if photo file is provided
+            if 'photo' not in request.FILES:
+                return Response(
+                    {'success': False, 'error': 'No photo file provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            photo_file = request.FILES['photo']
+            
+            # Validate file type
+            allowed_types = ['image/jpeg', 'image/png', 'image/jpg']
+            if photo_file.content_type not in allowed_types:
+                return Response(
+                    {'success': False, 'error': 'Invalid file type. Only JPEG and PNG images are allowed.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate file size (max 5MB)
+            max_size = 5 * 1024 * 1024  # 5MB
+            if photo_file.size > max_size:
+                return Response(
+                    {'success': False, 'error': 'File size too large. Maximum size is 5MB.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create or update StudentPhoto
+            student_photo, created = StudentPhoto.objects.get_or_create(
+                student=student,
+                defaults={'photo': photo_file}
+            )
+            
+            if not created:
+                # Update existing photo - delete old file first
+                if student_photo.photo:
+                    student_photo.photo.delete(save=False)
+                student_photo.photo = photo_file
+                student_photo.save()
+            
+            # Log the action
+            user_info = f"{request.user.username} ({request.user.user_type})"
+            action = 'uploaded' if created else 'updated'
+            logger.info(f"Photo {action} for student {student.registration_number} by {user_info}")
+            
+            return Response({
+                'success': True,
+                'message': f'Photo {action} successfully',
+                'data': {
+                    'student_uuid': student.student_uuid,
+                    'registration_number': student.registration_number,
+                    'photo_url': request.build_absolute_uri(student_photo.photo.url) if student_photo.photo else None,
+                    'uploaded_at': student_photo.uploaded_at,
+                    'uploaded_by': {
+                        'username': request.user.username,
+                        'user_type': request.user.user_type,
+                        'full_name': getattr(request.user, 'full_name', request.user.username)
+                    }
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Error uploading photo for student {student_uuid}: {str(e)}")
+            return Response(
+                {'success': False, 'error': 'An error occurred while uploading the photo'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def update(self, request, *args, **kwargs):
         """
