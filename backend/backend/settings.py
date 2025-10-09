@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'students',
     'cardmanage',
     'access',
+    'staff',
 ]
 
 MIDDLEWARE = [
