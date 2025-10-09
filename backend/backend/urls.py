@@ -8,6 +8,7 @@ urlpatterns = [
     path('auth/', include("authenication.urls")),
     path('', include('adminstrator.urls')),
     path('api/students/', include('students.urls')),
+    path('api/staff/', include('staff.urls')),
     path('api/cards/', include('cardmanage.urls')),
     path('api/access/', include('access.urls')),  # Access control API
 ]
