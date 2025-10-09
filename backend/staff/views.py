@@ -8,16 +8,6 @@ from .serializers import StaffSerializer
 from .permission import IsAdministrator, CanManageStaff
 import logging
 
-logger = logging.getLogger(__name__)ramework import viewsets, status, filters
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
-from django_filters.rest_framework import DjangoFilterBackend
-from .models import Staff
-from .serializers import StaffSerializer
-from .permission import IsAdministrator, CanManageStaff
-import logging
-
 logger = logging.getLogger(__name__)
 
 class StaffViewSet(viewsets.ModelViewSet):
@@ -123,6 +113,92 @@ class StaffViewSet(viewsets.ModelViewSet):
                 'position': {'max_length': 100}
             }
         })
+
+    @action(
+        detail=True,
+        methods=['post'],
+        parser_classes=[MultiPartParser, FormParser],
+        url_path='upload-photo',
+        permission_classes=[CanManageStaff]
+    )
+    def upload_photo(self, request, staff_uuid=None):
+        """
+        Upload a photo for a specific staff member.
+        Available to both Administrators and Registration Officers.
+        """
+        try:
+            # Get the staff member (already handled by get_object in ViewSet)
+            staff = self.get_object()
+
+            # Check if photo file is provided
+            if 'photo' not in request.FILES:
+                return Response(
+                    {'success': False, 'error': 'No photo file provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            photo_file = request.FILES['photo']
+
+            # Validate file type
+            allowed_types = ['image/jpeg', 'image/png', 'image/jpg']
+            if photo_file.content_type not in allowed_types:
+                return Response(
+                    {'success': False, 'error': 'Invalid file type. Only JPEG and PNG images are allowed.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate file size (max 5MB)
+            max_size = 5 * 1024 * 1024  # 5MB
+            if photo_file.size > max_size:
+                return Response(
+                    {'success': False, 'error': 'File size too large. Maximum size is 5MB.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Rename the file to use staff UUID
+            extension = 'jpg' if photo_file.content_type in ['image/jpeg', 'image/jpg'] else 'png'
+            photo_file.name = f"{staff.staff_uuid}.{extension}"
+
+            # Create or update StaffPhoto
+            staff_photo, created = StaffPhoto.objects.get_or_create(
+                staff=staff,
+                defaults={'photo': photo_file}
+            )
+
+            if not created:
+                # Update existing photo - delete old file first
+                if staff_photo.photo:
+                    staff_photo.photo.delete(save=False)
+                staff_photo.photo = photo_file
+                staff_photo.save()
+
+            # Log the action
+            user_info = f"{request.user.username} ({request.user.user_type})"
+            action = 'uploaded' if created else 'updated'
+            logger.info(f"Photo {action} for staff {staff.staff_number} by {user_info}")
+
+            return Response({
+                'success': True,
+                'message': f'Photo {action} successfully',
+                'data': {
+                    'staff_uuid': staff.staff_uuid,
+                    'staff_number': staff.staff_number,
+                    'photo_url': request.build_absolute_uri(staff_photo.photo.url) if staff_photo.photo else None,
+                    'uploaded_at': staff_photo.uploaded_at,
+                    'uploaded_by': {
+                        'username': request.user.username,
+                        'user_type': request.user.user_type,
+                        'full_name': getattr(request.user, 'full_name', request.user.username)
+                    }
+                }
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"Error uploading photo for staff {staff_uuid}: {str(e)}")
+            return Response(
+                {'success': False, 'error': 'An error occurred while uploading the photo'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def update(self, request, *args, **kwargs):
         user_info = f"{request.user.username} ({request.user.user_type})"
