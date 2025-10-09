@@ -80,7 +80,7 @@ class Card(models.Model):
 
 class IDCardPrintLog(models.Model):
     """Track ID card printing activities"""
-    id = models.AutoField(primary_key=True)
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='print_logs')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='card_print_logs')
     
@@ -106,7 +106,7 @@ class IDCardPrintLog(models.Model):
 
 class IDCardVerificationLog(models.Model):
     """Track QR code scans/verifications"""
-    id = models.AutoField(primary_key=True)
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='verification_logs')
     
     # Verification details

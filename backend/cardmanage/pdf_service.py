@@ -265,9 +265,8 @@ class IDCardPDFGenerator:
     def draw_back_side(self, c, x_offset, y_offset):
         """Draw the back side of ID card"""
         
-        # Background
-        c.setFillColor(white)
-        c.rect(x_offset, y_offset, self.CARD_WIDTH, self.CARD_HEIGHT, fill=1)
+        # Removed the white background fill to make it transparent
+        # If you want to keep a background, you can change it to a different color or comment this out
         
         # Blue vertical bar
         c.setFillColor(self.BLUE)
@@ -345,42 +344,17 @@ class IDCardPDFGenerator:
         c.drawString(x_offset + 20*mm, y_offset + 3*mm, "DASS'S OFFICE")
     
     def generate(self):
-        """Generate complete PDF with front and back"""
+        """Generate complete PDF with front on page 1 and back on page 2, using card size without extra white space"""
         
-        # Create canvas with landscape A4 to fit both sides
-        c = canvas.Canvas(self.buffer, pagesize=landscape((210*mm, 297*mm)))
+        # Create canvas with card size (portrait since height > width)
+        c = canvas.Canvas(self.buffer, pagesize=(self.CARD_WIDTH, self.CARD_HEIGHT))
         
-        # Calculate positions to center both cards
-        page_width, page_height = landscape((210*mm, 297*mm))
+        # Draw front side on page 1
+        self.draw_front_side(c, 0, 0)
+        c.showPage()
         
-        # Front side (left)
-        front_x = (page_width/2 - self.CARD_WIDTH - 5*mm) / 2
-        front_y = (page_height - self.CARD_HEIGHT) / 2
-        
-        # Back side (right)
-        back_x = page_width/2 + (page_width/2 - self.CARD_WIDTH - 5*mm) / 2
-        back_y = (page_height - self.CARD_HEIGHT) / 2
-        
-        # Draw cards
-        self.draw_front_side(c, front_x, front_y)
-        self.draw_back_side(c, back_x, back_y)
-        
-        # Add labels
-        c.setFont("Helvetica", 8)
-        c.setFillColor(black)
-        c.drawCentredString(front_x + self.CARD_WIDTH/2, front_y - 5*mm, "FRONT")
-        c.drawCentredString(back_x + self.CARD_WIDTH/2, back_y - 5*mm, "BACK")
-        
-        # Add cutting guides
-        c.setStrokeColor(HexColor('#cccccc'))
-        c.setLineWidth(0.5)
-        c.setDash(3, 3)
-        
-        # Front card guides
-        c.rect(front_x, front_y, self.CARD_WIDTH, self.CARD_HEIGHT, fill=0)
-        # Back card guides
-        c.rect(back_x, back_y, self.CARD_WIDTH, self.CARD_HEIGHT, fill=0)
-        
+        # Draw back side on page 2
+        self.draw_back_side(c, 0, 0)
         c.showPage()
         c.save()
         
