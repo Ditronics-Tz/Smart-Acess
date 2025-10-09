@@ -165,16 +165,121 @@ The Staff Management API provides comprehensive CRUD operations for managing sta
 
 **Permissions**: Administrators, Registration Officers
 
-**Status**: Not yet implemented (501 Not Implemented)
+**Content-Type**: `multipart/form-data`
 
-### 7. CSV Template
+**Request Body**:
+- `csv_file`: CSV file containing staff data
+
+**Expected CSV Format**:
+```csv
+Your Staff Number:,Your Surname:,Your First_Name:,Your Middle_Name,Your Active Mobile Phone number:,Your Department,Your Position,Your Employment Status
+STF001,Doe,John,Michael,+255712345678,Computer Engineering,Lecturer,Active
+STF002,Smith,Jane,,+255712345679,Information Technology,System Administrator,Active
+```
+
+**Required CSV Columns**:
+- `Your Staff Number:` (must be unique)
+- `Your Surname:`
+- `Your First_Name:`
+- `Your Department`
+- `Your Position`
+
+**Optional CSV Columns**:
+- `Your Middle_Name`
+- `Your Active Mobile Phone number:`
+- `Your Employment Status` (defaults to "Active" if not provided)
+
+**Response** (201 Created):
+```json
+{
+    "success": true,
+    "message": "Successfully created 2 staff members, skipped 0 problematic records",
+    "data": {
+        "total_created": 2,
+        "total_skipped": 0,
+        "skipped_records": [],
+        "staff_members": [
+            {
+                "staff_uuid": "uuid-string",
+                "surname": "Doe",
+                "first_name": "John",
+                "middle_name": "Michael",
+                "mobile_phone": "+255712345678",
+                "staff_number": "STF001",
+                "department": "Computer Engineering",
+                "position": "Lecturer",
+                "employment_status": "Active",
+                "is_active": true,
+                "created_at": "2025-01-15T10:30:00Z",
+                "updated_at": "2025-01-15T10:30:00Z"
+            }
+        ],
+        "uploaded_by": {
+            "username": "admin",
+            "user_type": "administrator",
+            "full_name": "Administrator",
+            "upload_timestamp": "2025-01-15T10:30:00Z"
+        }
+    }
+}
+```
+
+**Error Response** (400 Bad Request):
+```json
+{
+    "success": false,
+    "message": "CSV validation failed",
+    "errors": "Missing required columns: surname, first_name"
+}
+```
+
+### 7. CSV Template Download
 **GET** `/api/staff/csv-template/`
 
 **Permissions**: Administrators, Registration Officers
 
-**Status**: Not yet implemented (501 Not Implemented)
+**Response**: CSV file download with template format
 
-### 8. Validation Info
+**Example CSV Template**:
+```csv
+Your Staff Number:,Your Surname:,Your First_Name:,Your Middle_Name,Your Active Mobile Phone number:,Your Department,Your Position,Your Employment Status
+STF001,Doe,John,Michael,+255712345678,Computer Engineering,Lecturer,Active
+```
+
+### 8. Upload Staff Photo
+**POST** `/api/staff/{staff_uuid}/upload-photo/`
+
+**Permissions**: Administrators, Registration Officers
+
+**Content-Type**: `multipart/form-data`
+
+**Request Body**:
+- `photo`: Image file (JPEG, PNG, max 5MB)
+
+**Response** (201 Created):
+```json
+{
+    "success": true,
+    "message": "Photo uploaded successfully",
+    "data": {
+        "staff_uuid": "uuid-string",
+        "staff_number": "STF001",
+        "photo_url": "http://localhost:8000/media/staff_photos/uuid-string.jpg",
+        "uploaded_at": "2025-01-15T10:30:00Z",
+        "uploaded_by": {
+            "username": "admin",
+            "user_type": "administrator",
+            "full_name": "Administrator"
+        }
+    }
+}
+```
+
+**Error Responses**:
+- **400 Bad Request**: Invalid file type or size
+- **404 Not Found**: Staff member not found
+
+### 9. Validation Info
 **GET** `/api/staff/validation-info/`
 
 **Permissions**: Administrators, Registration Officers
@@ -191,22 +296,37 @@ The Staff Management API provides comprehensive CRUD operations for managing sta
     ],
     "optional_fields": [
         "middle_name",
-        "mobile_phone"
+        "mobile_phone",
+        "employment_status"
     ],
-    "field_constraints": {
-        "staff_number": {
-            "unique": true,
-            "max_length": 20
-        },
-        "mobile_phone": {
-            "max_length": 15
-        },
-        "department": {
-            "max_length": 255
-        },
-        "position": {
-            "max_length": 100
-        }
+    "employment_status_choices": [
+        "Active",
+        "Inactive",
+        "Terminated",
+        "Retired",
+        "On Leave"
+    ],
+    "file_requirements": {
+        "format": "CSV",
+        "max_size": "5MB",
+        "encoding": "UTF-8"
+    },
+    "validation_rules": {
+        "staff_number": "Must be unique across all staff members",
+        "mobile_phone": "Optional. Maximum 15 characters for phone number",
+        "employment_status": "Must be one of the valid choices if provided. Defaults to \"Active\"",
+        "department": "Required field",
+        "position": "Required field"
+    },
+    "user_permissions": {
+        "current_user": "admin",
+        "user_type": "administrator",
+        "can_create": true,
+        "can_upload_csv": true,
+        "can_download_template": true,
+        "can_upload_photos": true,
+        "can_modify": true,
+        "can_delete": true
     }
 }
 ```

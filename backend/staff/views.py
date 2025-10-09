@@ -4,9 +4,15 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Staff, StaffPhoto
-from .serializers import StaffSerializer
+from .serializers import StaffSerializer, StaffCSVUploadSerializer, StaffBulkCreateSerializer
 from .permission import IsAdministrator, CanManageStaff
+from .renderers import CSVRenderer
 import logging
+from django.db import transaction
+from django.utils import timezone
+import csv
+import io
+from django.http import HttpResponse
 
 logger = logging.getLogger(__name__)
 
@@ -85,16 +91,160 @@ class StaffViewSet(viewsets.ModelViewSet):
         permission_classes=[CanManageStaff]
     )
     def upload_csv(self, request):
-        return Response({'message': 'CSV upload functionality to be implemented'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        """
+        Upload staff data via CSV file.
+
+        Available to both Administrators and Registration Officers.
+
+        Expected CSV format:
+        surname,first_name,middle_name,mobile_phone,staff_number,department,position,employment_status
+
+        Required fields: surname, first_name, staff_number, department, position
+        Optional fields: middle_name, mobile_phone, employment_status
+        """
+        try:
+            # Add detailed user info to logs for auditing
+            user_info = f"{request.user.username} ({request.user.user_type}) - {getattr(request.user, 'full_name', 'N/A')}"
+            logger.info(f"CSV upload initiated by {user_info}")
+
+            # Validate the uploaded file
+            upload_serializer = StaffCSVUploadSerializer(data=request.data)
+            if not upload_serializer.is_valid():
+                logger.warning(f"CSV upload validation failed by {user_info}: {upload_serializer.errors}")
+                return Response(
+                    {
+                        'success': False,
+                        'message': 'Invalid file upload',
+                        'errors': upload_serializer.errors
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            csv_file = upload_serializer.validated_data['csv_file']
+
+            # Validate CSV data
+            try:
+                valid_rows = upload_serializer.validate_csv_data(csv_file)
+            except Exception as e:
+                logger.error(f"CSV data validation failed by {user_info}: {str(e)}")
+                return Response(
+                    {
+                        'success': False,
+                        'message': 'CSV validation failed',
+                        'errors': str(e)
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Create staff members one by one to handle duplicates
+            created_staff = []
+            skipped_records = []
+
+            with transaction.atomic():
+                for row_data in valid_rows:
+                    try:
+                        # Create the staff member
+                        staff = Staff.objects.create(**row_data)
+                        created_staff.append(staff)
+                        logger.info(f"Created staff member: {staff.staff_number} - {staff.first_name} {staff.surname}")
+                    except Exception as e:
+                        # If creation fails, skip this record
+                        staff_number = row_data.get('staff_number', 'Unknown')
+                        skipped_records.append({
+                            'staff_number': staff_number,
+                            'reason': str(e)
+                        })
+                        logger.warning(f"Skipped staff member {staff_number}: {str(e)}")
+
+            logger.info(f"Successfully created {len(created_staff)} staff members via CSV upload by {user_info}")
+            logger.info(f"Skipped {len(skipped_records)} duplicate/problematic records")
+
+            return Response(
+                {
+                    'success': True,
+                    'message': f'Successfully created {len(created_staff)} staff members, skipped {len(skipped_records)} problematic records',
+                    'data': {
+                        'total_created': len(created_staff),
+                        'total_skipped': len(skipped_records),
+                        'skipped_records': skipped_records,
+                        'staff_members': StaffSerializer(created_staff, many=True).data,
+                        'uploaded_by': {
+                            'username': request.user.username,
+                            'user_type': request.user.user_type,
+                            'full_name': getattr(request.user, 'full_name', request.user.username),
+                            'upload_timestamp': timezone.now().isoformat()
+                        }
+                    }
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            logger.error(f"Unexpected error during CSV upload by {user_info}: {str(e)}")
+            return Response(
+                {
+                    'success': False,
+                    'message': 'An error occurred during upload',
+                    'error': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(
         detail=False,
         methods=['get'],
         url_path='csv-template',
-        permission_classes=[CanManageStaff]
+        permission_classes=[CanManageStaff],
+        renderer_classes=[CSVRenderer]
     )
     def csv_template(self, request):
-        return Response({'message': 'CSV template functionality to be implemented'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        """
+        Download a CSV template file for staff upload.
+        """
+        logger.info(f"CSV template downloaded by {request.user.username} ({request.user.user_type})")
+
+        # Create a StringIO object to write CSV data
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write headers matching the expected format
+        headers = [
+            'Your Staff Number:',
+            'Your Surname:',
+            'Your First_Name:',
+            'Your Middle_Name',
+            'Your Active Mobile Phone number:',
+            'Your Department',
+            'Your Position',
+            'Your Employment Status'
+        ]
+        writer.writerow(headers)
+
+        # Write example row
+        example_row = [
+            'STF001',  # Staff number
+            'Doe',
+            'John',
+            'Michael',
+            '255712345678',
+            'Computer Engineering',
+            'Lecturer',
+            'Active'
+        ]
+        writer.writerow(example_row)
+
+        # Get the CSV content
+        csv_content = output.getvalue()
+        output.close()
+
+        # Create response
+        response = HttpResponse(
+            csv_content,
+            content_type='text/csv',
+        )
+        response['Content-Disposition'] = 'attachment; filename=staff_upload_template.csv'
+
+        return response
 
     @action(
         detail=False,
@@ -105,12 +255,29 @@ class StaffViewSet(viewsets.ModelViewSet):
     def validation_info(self, request):
         return Response({
             'required_fields': ['surname', 'first_name', 'staff_number', 'department', 'position'],
-            'optional_fields': ['middle_name', 'mobile_phone'],
-            'field_constraints': {
-                'staff_number': {'unique': True, 'max_length': 20},
-                'mobile_phone': {'max_length': 15},
-                'department': {'max_length': 255},
-                'position': {'max_length': 100}
+            'optional_fields': ['middle_name', 'mobile_phone', 'employment_status'],
+            'employment_status_choices': [choice[0] for choice in Staff.EMPLOYMENT_STATUS_CHOICES],
+            'file_requirements': {
+                'format': 'CSV',
+                'max_size': '5MB',
+                'encoding': 'UTF-8'
+            },
+            'validation_rules': {
+                'staff_number': 'Must be unique across all staff members',
+                'mobile_phone': 'Optional. Maximum 15 characters for phone number',
+                'employment_status': 'Must be one of the valid choices if provided. Defaults to "Active"',
+                'department': 'Required field',
+                'position': 'Required field'
+            },
+            'user_permissions': {
+                'current_user': request.user.username,
+                'user_type': request.user.user_type,
+                'can_create': True,
+                'can_upload_csv': True,
+                'can_download_template': True,
+                'can_upload_photos': True,
+                'can_modify': request.user.user_type == 'administrator',
+                'can_delete': request.user.user_type == 'administrator'
             }
         })
 
