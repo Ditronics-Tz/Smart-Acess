@@ -1,7 +1,7 @@
 # Staff Management API Documentation
 
 ## Overview
-The Staff Management API provides comprehensive CRUD operations for managing staff members in the Smart Access system. It includes features for staff registration, profile management, CSV import/export, and access control.
+The Staff Management API provides comprehensive CRUD operations for managing staff members in the Smart Access system. It includes features for staff registration, profile management, CSV import/export, photo uploads, and access control.
 
 ## Base URL
 ```
@@ -357,6 +357,14 @@ STF001,Doe,John,Michael,+255712345678,Computer Engineering,Lecturer,Active
 - `Retired`: Retired
 - `On Leave`: Currently on leave
 
+### Staff Photo Model Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `staff` | OneToOneField | Reference to Staff model |
+| `photo` | ImageField | Photo file (stored in media/staff_photos/) |
+| `uploaded_at` | DateTime | Upload timestamp |
+
 ## Filtering & Search
 
 ### Search Fields
@@ -441,5 +449,7 @@ curl -X GET http://localhost:8000/api/staff/validation-info/ \
 - Staff numbers must be unique across the system
 - The API uses UUIDs for staff identification
 - Soft deletes are not implemented (use `is_active` field instead)
-- CSV functionality is planned for future implementation
+- CSV upload functionality is fully implemented with validation and error handling
+- Photo upload functionality allows JPEG and PNG images up to 5MB
 - All operations are logged for audit purposes
+- Staff can be created without photos and photos can be added later
