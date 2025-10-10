@@ -6,7 +6,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import Staff, StaffPhoto
 from .serializers import StaffSerializer, StaffCSVUploadSerializer, StaffBulkCreateSerializer
 from .permission import IsAdministrator, CanManageStaff
-from .renderers import CSVRenderer
 import logging
 from django.db import transaction
 from django.utils import timezone
@@ -202,8 +201,7 @@ class StaffViewSet(viewsets.ModelViewSet):
         detail=False,
         methods=['get'],
         url_path='csv-template',
-        permission_classes=[CanManageStaff],
-        renderer_classes=[CSVRenderer]
+        permission_classes=[CanManageStaff]
     )
     def csv_template(self, request):
         """
@@ -245,13 +243,9 @@ class StaffViewSet(viewsets.ModelViewSet):
         csv_content = output.getvalue()
         output.close()
 
-        # Create response
-        response = HttpResponse(
-            csv_content,
-            content_type='text/csv',
-        )
+        # Return HttpResponse directly to bypass DRF content negotiation
+        response = HttpResponse(csv_content, content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = 'attachment; filename=staff_upload_template.csv'
-
         return response
 
     @action(
