@@ -1,7 +1,7 @@
 from rest_framework.renderers import BaseRenderer
 
 class CSVRenderer(BaseRenderer):
-    media_type = '*/*'  # Accept any media type to avoid 406 errors
+    media_type = '*/*' 
     format = 'csv'
     charset = 'utf-8'
     render_style = 'binary'
