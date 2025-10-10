@@ -81,6 +81,14 @@ class StaffViewSet(viewsets.ModelViewSet):
                 'can_delete': request.user.user_type == 'administrator'
             }
 
+            # Add photo information if exists
+            staff = self.get_object()
+            if hasattr(staff, 'photo') and staff.photo and staff.photo.photo:
+                response.data['photo'] = {
+                    'url': request.build_absolute_uri(staff.photo.photo.url),
+                    'uploaded_at': staff.photo.uploaded_at
+                }
+
         return response
 
     @action(

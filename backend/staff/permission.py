@@ -28,7 +28,7 @@ class CanManageStaff(BasePermission):
             return True
 
         if request.user.user_type == 'registration_officer':
-            allowed_actions = ['list', 'retrieve', 'create', 'upload_csv', 'csv_template', 'validation_info']
+            allowed_actions = ['list', 'retrieve', 'create', 'upload_csv', 'csv_template', 'validation_info', 'upload_photo']
 
             if hasattr(view, 'action') and view.action in allowed_actions:
                 return True
@@ -49,6 +49,9 @@ class CanManageStaff(BasePermission):
 
         if request.user.user_type == 'registration_officer':
             if request.method in ['GET', 'HEAD', 'OPTIONS']:
+                return True
+            # Allow POST for upload_photo action
+            if request.method == 'POST' and hasattr(view, 'action') and view.action == 'upload_photo':
                 return True
             return False
 
