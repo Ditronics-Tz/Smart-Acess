@@ -4,10 +4,13 @@ from .permissions import IsAdministrator, CanManageCards
 from .models import Card, IDCardPrintLog, IDCardVerificationLog
 from .serializers import (
     CardSerializer, CardCreateSerializer, CardUpdateSerializer, 
-    CardListSerializer, StudentWithoutCardSerializer
+    CardListSerializer, StudentWithoutCardSerializer,
+    StaffWithoutCardSerializer, SecurityWithoutCardSerializer
 )
 from .pdf_service import IDCardPDFGenerator
 from students.models import Student
+from staff.models import Staff
+from adminstrator.models import SecurityPersonnel
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -40,17 +43,26 @@ class CardViewSet(viewsets.ModelViewSet):
     - Administrators: Full CRUD access to all card operations
     - Registration Officers: Can view, create, and manage cards
     """
-    queryset = Card.objects.all().select_related('student').prefetch_related('student__photo').order_by('-created_at')
+    queryset = Card.objects.all().select_related(
+        'student', 'staff', 'security_personnel'
+    ).prefetch_related(
+        'student__photo', 'staff__photo'
+    ).order_by('-created_at')
     serializer_class = CardSerializer
     permission_classes = [CanManageCards]
     lookup_field = 'card_uuid'
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_active', 'student__department', 'student__student_status']
+    filterset_fields = [
+        'is_active', 'card_type', 'student__department', 'student__student_status',
+        'staff__department', 'staff__employment_status'
+    ]
     search_fields = [
         'rfid_number', 'student__first_name', 'student__surname', 
-        'student__registration_number', 'student__department'
+        'student__registration_number', 'student__department',
+        'staff__first_name', 'staff__surname', 'staff__staff_number', 'staff__department',
+        'security_personnel__full_name', 'security_personnel__employee_id', 'security_personnel__badge_number'
     ]
-    ordering_fields = ['created_at', 'issued_date', 'student__surname', 'rfid_number']
+    ordering_fields = ['created_at', 'issued_date', 'rfid_number', 'card_type']
     ordering = ['-created_at']
 
     def get_serializer_class(self):
@@ -79,10 +91,6 @@ class CardViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
 
     def create(self, request, *args, **kwargs):
-        """
-        Create a new card for a student.
-        Available to both Administrators and Registration Officers.
-        """
         user_info = f"{request.user.username} ({request.user.user_type})"
         logger.info(f"Card creation initiated by {user_info}")
         
@@ -90,13 +98,12 @@ class CardViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         card = serializer.save()
         
-        logger.info(f"Card created successfully by {user_info}: {card.card_uuid} for student {card.student.registration_number}")
+        card_holder_info = card.card_holder_number if card.card_holder else "unknown"
+        logger.info(f"Card created successfully by {user_info}: {card.card_uuid} for {card.card_type} {card_holder_info}")
         
-        # Return detailed card information
         response_serializer = CardSerializer(card)
         response_data = response_serializer.data
         
-        # Add creator info to response for audit trail
         response_data['created_by'] = {
             'username': request.user.username,
             'user_type': request.user.user_type,
@@ -292,49 +299,117 @@ class CardViewSet(viewsets.ModelViewSet):
     @action(
         detail=False, 
         methods=['get'], 
+        url_path='staff-without-cards',
+        permission_classes=[CanManageCards]
+    )
+    def staff_without_cards(self, request):
+        staff_without_cards = Staff.objects.filter(
+            is_active=True,
+            card__isnull=True
+        ).order_by('surname', 'first_name')
+        
+        search = request.query_params.get('search', '')
+        if search:
+            staff_without_cards = staff_without_cards.filter(
+                Q(first_name__icontains=search) |
+                Q(surname__icontains=search) |
+                Q(staff_number__icontains=search) |
+                Q(department__icontains=search)
+            )
+        
+        department = request.query_params.get('department', '')
+        if department:
+            staff_without_cards = staff_without_cards.filter(department__icontains=department)
+        
+        serializer = StaffWithoutCardSerializer(staff_without_cards, many=True)
+        
+        return Response({
+            'count': staff_without_cards.count(),
+            'staff': serializer.data,
+            'message': f'Found {staff_without_cards.count()} staff without cards.'
+        }, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False, 
+        methods=['get'], 
+        url_path='security-without-cards',
+        permission_classes=[CanManageCards]
+    )
+    def security_without_cards(self, request):
+        security_without_cards = SecurityPersonnel.objects.filter(
+            is_active=True,
+            card__isnull=True
+        ).order_by('full_name')
+        
+        search = request.query_params.get('search', '')
+        if search:
+            security_without_cards = security_without_cards.filter(
+                Q(full_name__icontains=search) |
+                Q(employee_id__icontains=search) |
+                Q(badge_number__icontains=search)
+            )
+        
+        serializer = SecurityWithoutCardSerializer(security_without_cards, many=True)
+        
+        return Response({
+            'count': security_without_cards.count(),
+            'security': serializer.data,
+            'message': f'Found {security_without_cards.count()} security personnel without cards.'
+        }, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False, 
+        methods=['get'], 
         url_path='statistics',
         permission_classes=[CanManageCards]
     )
     def card_statistics(self, request):
-        """
-        Get comprehensive card statistics.
-        Available to both Administrators and Registration Officers.
-        """
+        from django.db.models import Count
+        from datetime import timedelta
+        
         total_students = Student.objects.filter(is_active=True).count()
+        total_staff = Staff.objects.filter(is_active=True).count()
+        total_security = SecurityPersonnel.objects.filter(is_active=True).count()
+        total_personnel = total_students + total_staff + total_security
+        
         total_cards = Card.objects.count()
         active_cards = Card.objects.filter(is_active=True).count()
         inactive_cards = total_cards - active_cards
-        students_without_cards = Student.objects.filter(
-            is_active=True,
-            card__isnull=True
-        ).count()
         
-        # Cards by department
-        from django.db.models import Count
-        cards_by_department = Card.objects.values(
-            'student__department'
-        ).annotate(
-            count=Count('id')
-        ).order_by('-count')
+        student_cards = Card.objects.filter(card_type='student').count()
+        staff_cards = Card.objects.filter(card_type='staff').count()
+        security_cards = Card.objects.filter(card_type='security').count()
         
-        # Recent cards (last 30 days)
-        from datetime import timedelta
+        students_without_cards = Student.objects.filter(is_active=True, card__isnull=True).count()
+        staff_without_cards = Staff.objects.filter(is_active=True, card__isnull=True).count()
+        security_without_cards = SecurityPersonnel.objects.filter(is_active=True, card__isnull=True).count()
+        
         thirty_days_ago = timezone.now() - timedelta(days=30)
-        recent_cards = Card.objects.filter(
-            created_at__gte=thirty_days_ago
-        ).count()
+        recent_cards = Card.objects.filter(created_at__gte=thirty_days_ago).count()
         
         return Response({
             'summary': {
+                'total_personnel': total_personnel,
                 'total_students': total_students,
+                'total_staff': total_staff,
+                'total_security': total_security,
                 'total_cards': total_cards,
                 'active_cards': active_cards,
                 'inactive_cards': inactive_cards,
+                'student_cards': student_cards,
+                'staff_cards': staff_cards,
+                'security_cards': security_cards,
                 'students_without_cards': students_without_cards,
-                'coverage_percentage': round((total_cards / total_students * 100), 2) if total_students > 0 else 0,
+                'staff_without_cards': staff_without_cards,
+                'security_without_cards': security_without_cards,
+                'coverage_percentage': round((total_cards / total_personnel * 100), 2) if total_personnel > 0 else 0,
                 'recent_cards_30_days': recent_cards
             },
-            'cards_by_department': cards_by_department,
+            'cards_by_type': {
+                'student': student_cards,
+                'staff': staff_cards,
+                'security': security_cards
+            },
             'user_info': {
                 'current_user': request.user.username,
                 'user_type': request.user.user_type,
@@ -345,59 +420,38 @@ class CardViewSet(viewsets.ModelViewSet):
     @action(
         detail=False, 
         methods=['post'], 
-        url_path='bulk-create',
+        url_path='bulk-create-student-cards',
         permission_classes=[CanManageCards]
     )
-    def bulk_create_cards(self, request):
-        """
-        Create cards for multiple students at once.
-        Available to both Administrators and Registration Officers.
-        """
+    def bulk_create_student_cards(self, request):
         student_uuids = request.data.get('student_uuids', [])
         generate_rfid = request.data.get('generate_rfid', True)
         
         if not student_uuids:
-            return Response(
-                {'detail': 'student_uuids list is required.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({
+                'error': 'student_uuids list is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         created_cards = []
         errors = []
         
         for student_uuid in student_uuids:
             try:
-                student = Student.objects.get(student_uuid=student_uuid, is_active=True)
+                card_data = {
+                    'card_type': 'student',
+                    'student_uuid': student_uuid,
+                    'generate_rfid': generate_rfid
+                }
                 
-                # Check if student already has a card
-                if hasattr(student, 'card'):
+                serializer = CardCreateSerializer(data=card_data)
+                if serializer.is_valid():
+                    card = serializer.save()
+                    created_cards.append(card)
+                else:
                     errors.append({
                         'student_uuid': student_uuid,
-                        'error': f'Student {student.first_name} {student.surname} already has a card.'
+                        'errors': serializer.errors
                     })
-                    continue
-                
-                # Generate RFID number
-                if generate_rfid:
-                    import random
-                    import string
-                    while True:
-                        rfid_number = ''.join(random.choices(string.digits, k=10))
-                        if not Card.objects.filter(rfid_number=rfid_number).exists():
-                            break
-                
-                    # Create card
-                    card = Card.objects.create(
-                        student=student,
-                        rfid_number=rfid_number
-                    )
-                    created_cards.append(card)
-                
-            except Student.DoesNotExist:
-                errors.append({
-                    'student_uuid': student_uuid,
-                    'error': 'Student not found or inactive.'
-                })
             except Exception as e:
                 errors.append({
                     'student_uuid': student_uuid,
@@ -405,18 +459,143 @@ class CardViewSet(viewsets.ModelViewSet):
                 })
         
         user_info = f"{request.user.username} ({request.user.user_type})"
-        logger.info(f"Bulk card creation by {user_info}: {len(created_cards)} cards created, {len(errors)} errors")
+        logger.info(f"Bulk student card creation by {user_info}: {len(created_cards)} cards created, {len(errors)} errors")
         
-        # Serialize created cards
         serializer = CardListSerializer(created_cards, many=True)
         
         return Response({
             'success': True,
-            'message': f'Created {len(created_cards)} cards, {len(errors)} errors.',
+            'message': f'Created {len(created_cards)} student cards, {len(errors)} errors.',
             'created_cards': serializer.data,
             'errors': errors,
             'summary': {
                 'total_requested': len(student_uuids),
+                'successful': len(created_cards),
+                'failed': len(errors)
+            },
+            'created_by': {
+                'username': request.user.username,
+                'user_type': request.user.user_type,
+                'timestamp': timezone.now().isoformat()
+            }
+        }, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=False, 
+        methods=['post'], 
+        url_path='bulk-create-staff-cards',
+        permission_classes=[CanManageCards]
+    )
+    def bulk_create_staff_cards(self, request):
+        staff_uuids = request.data.get('staff_uuids', [])
+        generate_rfid = request.data.get('generate_rfid', True)
+        
+        if not staff_uuids:
+            return Response({
+                'error': 'staff_uuids list is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        created_cards = []
+        errors = []
+        
+        for staff_uuid in staff_uuids:
+            try:
+                card_data = {
+                    'card_type': 'staff',
+                    'staff_uuid': staff_uuid,
+                    'generate_rfid': generate_rfid
+                }
+                
+                serializer = CardCreateSerializer(data=card_data)
+                if serializer.is_valid():
+                    card = serializer.save()
+                    created_cards.append(card)
+                else:
+                    errors.append({
+                        'staff_uuid': staff_uuid,
+                        'errors': serializer.errors
+                    })
+            except Exception as e:
+                errors.append({
+                    'staff_uuid': staff_uuid,
+                    'error': str(e)
+                })
+        
+        user_info = f"{request.user.username} ({request.user.user_type})"
+        logger.info(f"Bulk staff card creation by {user_info}: {len(created_cards)} cards created, {len(errors)} errors")
+        
+        serializer = CardListSerializer(created_cards, many=True)
+        
+        return Response({
+            'success': True,
+            'message': f'Created {len(created_cards)} staff cards, {len(errors)} errors.',
+            'created_cards': serializer.data,
+            'errors': errors,
+            'summary': {
+                'total_requested': len(staff_uuids),
+                'successful': len(created_cards),
+                'failed': len(errors)
+            },
+            'created_by': {
+                'username': request.user.username,
+                'user_type': request.user.user_type,
+                'timestamp': timezone.now().isoformat()
+            }
+        }, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=False, 
+        methods=['post'], 
+        url_path='bulk-create-security-cards',
+        permission_classes=[CanManageCards]
+    )
+    def bulk_create_security_cards(self, request):
+        security_uuids = request.data.get('security_uuids', [])
+        generate_rfid = request.data.get('generate_rfid', True)
+        
+        if not security_uuids:
+            return Response({
+                'error': 'security_uuids list is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        created_cards = []
+        errors = []
+        
+        for security_uuid in security_uuids:
+            try:
+                card_data = {
+                    'card_type': 'security',
+                    'security_uuid': security_uuid,
+                    'generate_rfid': generate_rfid
+                }
+                
+                serializer = CardCreateSerializer(data=card_data)
+                if serializer.is_valid():
+                    card = serializer.save()
+                    created_cards.append(card)
+                else:
+                    errors.append({
+                        'security_uuid': security_uuid,
+                        'errors': serializer.errors
+                    })
+            except Exception as e:
+                errors.append({
+                    'security_uuid': security_uuid,
+                    'error': str(e)
+                })
+        
+        user_info = f"{request.user.username} ({request.user.user_type})"
+        logger.info(f"Bulk security card creation by {user_info}: {len(created_cards)} cards created, {len(errors)} errors")
+        
+        serializer = CardListSerializer(created_cards, many=True)
+        
+        return Response({
+            'success': True,
+            'message': f'Created {len(created_cards)} security cards, {len(errors)} errors.',
+            'created_cards': serializer.data,
+            'errors': errors,
+            'summary': {
+                'total_requested': len(security_uuids),
                 'successful': len(created_cards),
                 'failed': len(errors)
             },
@@ -435,19 +614,63 @@ class CardViewSet(viewsets.ModelViewSet):
         renderer_classes=[PassthroughRenderer]
     )
     def print_card(self, request, card_uuid=None):
-        """
-        Generate PDF for ID card printing.
-        Available to both Administrators and Registration Officers.
-        """
         try:
             card = self.get_object()
-            student = card.student
             
-            # Generate PDF
+            if card.card_type == 'student' and card.student:
+                entity = card.student
+                pdf_generator = IDCardPDFGenerator(entity, card)
+                pdf_buffer = pdf_generator.generate()
+                
+                IDCardPrintLog.objects.create(
+                    card=card,
+                    student=entity,
+                    printed_by=request.user.username,
+                    user_type=request.user.user_type,
+                    pdf_generated=True
+                )
+                
+                user_info = f"{request.user.username} ({request.user.user_type})"
+                logger.info(f"Student ID card PDF generated for {entity.registration_number} by {user_info}")
+                
+                response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="ID_Card_{entity.registration_number}.pdf"'
+                
+                return response
+            else:
+                return Response(
+                    {'success': False, 'error': 'Invalid card type or entity not found'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+        except Exception as e:
+            logger.error(f"Error generating ID card PDF: {str(e)}")
+            return Response(
+                {'success': False, 'error': f'Failed to generate ID card PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(
+        detail=True,
+        methods=['get', 'post'],
+        url_path='print-student-card',
+        permission_classes=[CanManageCards],
+        renderer_classes=[PassthroughRenderer]
+    )
+    def print_student_card(self, request, card_uuid=None):
+        try:
+            card = self.get_object()
+            
+            if card.card_type != 'student' or not card.student:
+                return Response(
+                    {'success': False, 'error': 'This is not a student card'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            student = card.student
             pdf_generator = IDCardPDFGenerator(student, card)
             pdf_buffer = pdf_generator.generate()
             
-            # Log the print action
             IDCardPrintLog.objects.create(
                 card=card,
                 student=student,
@@ -457,18 +680,105 @@ class CardViewSet(viewsets.ModelViewSet):
             )
             
             user_info = f"{request.user.username} ({request.user.user_type})"
-            logger.info(f"ID card PDF generated for {student.registration_number} by {user_info}")
+            logger.info(f"Student ID card PDF generated for {student.registration_number} by {user_info}")
             
-            # Return PDF as download
             response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
-            response['Content-Disposition'] = f'attachment; filename="ID_Card_{student.registration_number}.pdf"'
+            response['Content-Disposition'] = f'attachment; filename="Student_ID_Card_{student.registration_number}.pdf"'
             
             return response
             
         except Exception as e:
-            logger.error(f"Error generating ID card PDF: {str(e)}")
+            logger.error(f"Error generating student ID card PDF: {str(e)}")
             return Response(
-                {'success': False, 'error': f'Failed to generate ID card PDF: {str(e)}'},
+                {'success': False, 'error': f'Failed to generate student ID card PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(
+        detail=True,
+        methods=['get', 'post'],
+        url_path='print-staff-card',
+        permission_classes=[CanManageCards],
+        renderer_classes=[PassthroughRenderer]
+    )
+    def print_staff_card(self, request, card_uuid=None):
+        try:
+            card = self.get_object()
+            
+            if card.card_type != 'staff' or not card.staff:
+                return Response(
+                    {'success': False, 'error': 'This is not a staff card'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            staff = card.staff
+            pdf_generator = IDCardPDFGenerator(staff, card)
+            pdf_buffer = pdf_generator.generate()
+            
+            IDCardPrintLog.objects.create(
+                card=card,
+                staff=staff,
+                printed_by=request.user.username,
+                user_type=request.user.user_type,
+                pdf_generated=True
+            )
+            
+            user_info = f"{request.user.username} ({request.user.user_type})"
+            logger.info(f"Staff ID card PDF generated for {staff.staff_number} by {user_info}")
+            
+            response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="Staff_ID_Card_{staff.staff_number}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating staff ID card PDF: {str(e)}")
+            return Response(
+                {'success': False, 'error': f'Failed to generate staff ID card PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(
+        detail=True,
+        methods=['get', 'post'],
+        url_path='print-security-card',
+        permission_classes=[CanManageCards],
+        renderer_classes=[PassthroughRenderer]
+    )
+    def print_security_card(self, request, card_uuid=None):
+        try:
+            card = self.get_object()
+            
+            if card.card_type != 'security' or not card.security_personnel:
+                return Response(
+                    {'success': False, 'error': 'This is not a security card'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            security = card.security_personnel
+            pdf_generator = IDCardPDFGenerator(security, card)
+            pdf_buffer = pdf_generator.generate()
+            
+            IDCardPrintLog.objects.create(
+                card=card,
+                security_personnel=security,
+                printed_by=request.user.username,
+                user_type=request.user.user_type,
+                pdf_generated=True
+            )
+            
+            user_info = f"{request.user.username} ({request.user.user_type})"
+            logger.info(f"Security ID card PDF generated for {security.employee_id} by {user_info}")
+            
+            response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="Security_ID_Card_{security.employee_id}.pdf"'
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating security ID card PDF: {str(e)}")
+            return Response(
+                {'success': False, 'error': f'Failed to generate security ID card PDF: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -539,4 +849,117 @@ def verify_student(request, student_uuid):
             'success': False,
             'verified': False,
             'message': 'Verification failed.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def verify_staff(request, staff_uuid):
+    try:
+        staff = Staff.objects.get(staff_uuid=staff_uuid, is_active=True)
+        
+        has_card = hasattr(staff, 'card') and staff.card is not None
+        
+        ip_address = request.META.get('REMOTE_ADDR')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        
+        IDCardVerificationLog.objects.create(
+            staff=staff,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            verification_source='qr_scan'
+        )
+        
+        photo_url = None
+        if hasattr(staff, 'photo') and staff.photo and staff.photo.photo:
+            photo_url = request.build_absolute_uri(staff.photo.photo.url)
+        
+        verification_data = {
+            'success': True,
+            'verified': True,
+            'staff': {
+                'staff_number': staff.staff_number,
+                'full_name': f"{staff.first_name} {staff.surname} {staff.middle_name or ''}".strip(),
+                'department': staff.department,
+                'position': staff.position,
+                'employment_status': staff.employment_status,
+                'photo_url': photo_url,
+                'has_card': has_card,
+                'card_active': staff.card.is_active if has_card else False,
+            },
+            'verified_at': timezone.now().isoformat(),
+            'institution': 'DAR ES SALAAM INSTITUTE OF TECHNOLOGY'
+        }
+        
+        logger.info(f"Staff verification: {staff.staff_number} from IP {ip_address}")
+        
+        return Response(verification_data, status=status.HTTP_200_OK)
+        
+    except Staff.DoesNotExist:
+        logger.warning(f"Failed staff verification attempt for UUID: {staff_uuid}")
+        return Response({
+            'success': False,
+            'verified': False,
+            'message': 'Staff not found or inactive.'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error during staff verification: {str(e)}")
+        return Response({
+            'success': False,
+            'verified': False,
+            'message': 'Staff verification failed.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def verify_security(request, security_uuid):
+    try:
+        security = SecurityPersonnel.objects.get(security_id=security_uuid, is_active=True)
+        
+        has_card = hasattr(security, 'card') and security.card is not None
+        
+        ip_address = request.META.get('REMOTE_ADDR')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        
+        IDCardVerificationLog.objects.create(
+            security_personnel=security,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            verification_source='qr_scan'
+        )
+        
+        verification_data = {
+            'success': True,
+            'verified': True,
+            'security': {
+                'employee_id': security.employee_id,
+                'badge_number': security.badge_number,
+                'full_name': security.full_name,
+                'phone_number': security.phone_number,
+                'hire_date': security.hire_date.isoformat() if security.hire_date else None,
+                'has_card': has_card,
+                'card_active': security.card.is_active if has_card else False,
+            },
+            'verified_at': timezone.now().isoformat(),
+            'institution': 'DAR ES SALAAM INSTITUTE OF TECHNOLOGY'
+        }
+        
+        logger.info(f"Security verification: {security.employee_id} from IP {ip_address}")
+        
+        return Response(verification_data, status=status.HTTP_200_OK)
+        
+    except SecurityPersonnel.DoesNotExist:
+        logger.warning(f"Failed security verification attempt for UUID: {security_uuid}")
+        return Response({
+            'success': False,
+            'verified': False,
+            'message': 'Security personnel not found or inactive.'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error during security verification: {str(e)}")
+        return Response({
+            'success': False,
+            'verified': False,
+            'message': 'Security verification failed.'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

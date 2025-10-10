@@ -1,8 +1,23 @@
-# Card Management System Documentation
+# Smart Access Card Management System Documentation
 
 ## Overview
 
-The Card Management System is a comprehensive module for managing RFID access cards for students in the Smart Access system. It provides full CRUD operations, bulk management capabilities, and detailed tracking of card lifecycle.
+The Smart Access Card Management System is a comprehensive multi-entity card management solution for Dar es Salaam Institute of Technology. It supports RFID access cards for **students**, **staff**, and **security personnel** with full CRUD operations, bulk management capabilities, and detailed tracking of card lifecycle.
+
+## System Capabilities
+
+### Multi-Entity Support
+- **Student Cards**: Academic identification and access control
+- **Staff Cards**: Employee identification and facility access  
+- **Security Personnel Cards**: Security team identification and specialized access
+
+### Core Features
+- Individual and bulk card creation
+- PDF card printing with entity-specific templates
+- QR code verification for all card types
+- Comprehensive audit logging and tracking
+- Role-based access control (Administrator/Registration Officer)
+- Real-time statistics and reporting
 
 ## Table of Contents
 
@@ -501,6 +516,47 @@ The card management system integrates with the access control system by:
 
 ---
 
-**Last Updated**: September 19, 2025  
-**Version**: 1.0  
+## Quick Links
+
+- **[Complete API Documentation](CARD_MANAGEMENT_API.md)** - Detailed endpoint documentation
+- **[Multi-Card System Implementation](MULTI_CARD_SYSTEM_IMPLEMENTATION.md)** - Technical implementation details
+- **[Staff Management API](STAFF_MANAGEMENT_API.md)** - Staff-specific endpoints
+- **[Student Photo Upload API](STUDENT_PHOTO_UPLOAD_API.md)** - Photo management
+
+## New Features (Multi-Card System)
+
+### Entity-Specific Endpoints
+Each entity type (student/staff/security) now has dedicated endpoints:
+
+```
+# Student Cards
+GET    /api/cards/students-without-cards/
+POST   /api/cards/bulk-create-student-cards/
+GET    /api/cards/{card_uuid}/print-student-card/
+GET    /api/cards/verify/student/{student_uuid}/
+
+# Staff Cards  
+GET    /api/cards/staff-without-cards/
+POST   /api/cards/bulk-create-staff-cards/
+GET    /api/cards/{card_uuid}/print-staff-card/
+GET    /api/cards/verify/staff/{staff_uuid}/
+
+# Security Cards
+GET    /api/cards/security-without-cards/
+POST   /api/cards/bulk-create-security-cards/
+GET    /api/cards/{card_uuid}/print-security-card/
+GET    /api/cards/verify/security/{security_uuid}/
+```
+
+### Enhanced Statistics
+The statistics endpoint now provides comprehensive metrics across all entity types:
+- Total personnel count by type
+- Card coverage percentages
+- Entity-specific without-card counts
+- Recent activity tracking
+
+---
+
+**Last Updated**: October 10, 2025  
+**Version**: 2.0 (Multi-Card System)  
 **Maintainer**: Smart Access Development Team

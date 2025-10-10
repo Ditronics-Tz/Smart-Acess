@@ -1,13 +1,12 @@
 from rest_framework import routers
 from django.urls import path
-from .views import CardViewSet, verify_student
+from .views import CardViewSet, verify_student, verify_staff, verify_security
 
-# Create a router
 router = routers.DefaultRouter()
-# Register with empty prefix since we already included it with the api/cards/ prefix
 router.register(r'', CardViewSet, basename='card')
 
-# The urlpatterns are what Django's URL resolver uses to find the correct view.
 urlpatterns = [
-    path('verify/<uuid:student_uuid>/', verify_student, name='verify-student'),
+    path('verify/student/<uuid:student_uuid>/', verify_student, name='verify-student'),
+    path('verify/staff/<uuid:staff_uuid>/', verify_staff, name='verify-staff'),
+    path('verify/security/<uuid:security_uuid>/', verify_security, name='verify-security'),
 ] + router.urls
