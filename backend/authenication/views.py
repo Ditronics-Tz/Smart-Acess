@@ -21,6 +21,8 @@ from .serializers import (
 )
 import uuid
 from .utils import send_otp_email
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 
 
 class RateLimitMixin:
@@ -432,17 +434,25 @@ class RefreshTokenAPIView(APIView):
     def post(self, request):
         serializer = RefreshTokenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        refresh_str = serializer.validated_data['refresh']
 
         try:
-            refresh_token = RefreshToken(serializer.validated_data['refresh'])
+            refresh_token = RefreshToken(refresh_str)
             access_token = refresh_token.access_token
 
-            return Response({
-                "access": str(access_token),
-                "refresh": str(refresh_token)
-            }, status=status.HTTP_200_OK)
-        except Exception:
-            return Response({"detail": "Invalid refresh token."}, status=status.HTTP_401_UNAUTHORIZED)
+            data = {'access': str(access_token)}
+
+            if api_settings.ROTATE_REFRESH_TOKENS:
+                if api_settings.BLACKLIST_AFTER_ROTATION:
+                    refresh_token.blacklist()
+                refresh_token.set_jti()
+                refresh_token.set_exp()
+                refresh_token.set_iat()
+                data['refresh'] = str(refresh_token)
+
+            return Response(data, status=status.HTTP_200_OK)
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
 
 
 class LogoutAPIView(APIView):
