@@ -8,6 +8,7 @@ from .serializers import (
     StaffWithoutCardSerializer, SecurityWithoutCardSerializer
 )
 from .pdf_service import IDCardPDFGenerator
+from .security_pdf_service import SecurityIDCardPDFGenerator
 from students.models import Student
 from staff.models import Staff
 from adminstrator.models import SecurityPersonnel
@@ -637,6 +638,49 @@ class CardViewSet(viewsets.ModelViewSet):
                 response['Content-Disposition'] = f'attachment; filename="ID_Card_{entity.registration_number}.pdf"'
                 
                 return response
+                
+            elif card.card_type == 'staff' and card.staff:
+                entity = card.staff
+                pdf_generator = IDCardPDFGenerator(entity, card)
+                pdf_buffer = pdf_generator.generate()
+                
+                IDCardPrintLog.objects.create(
+                    card=card,
+                    staff=entity,
+                    printed_by=request.user.username,
+                    user_type=request.user.user_type,
+                    pdf_generated=True
+                )
+                
+                user_info = f"{request.user.username} ({request.user.user_type})"
+                logger.info(f"Staff ID card PDF generated for {entity.staff_number} by {user_info}")
+                
+                response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="ID_Card_{entity.staff_number}.pdf"'
+                
+                return response
+                
+            elif card.card_type == 'security' and card.security_personnel:
+                entity = card.security_personnel
+                pdf_generator = SecurityIDCardPDFGenerator(entity, card)
+                pdf_buffer = pdf_generator.generate()
+                
+                IDCardPrintLog.objects.create(
+                    card=card,
+                    security_personnel=entity,
+                    printed_by=request.user.username,
+                    user_type=request.user.user_type,
+                    pdf_generated=True
+                )
+                
+                user_info = f"{request.user.username} ({request.user.user_type})"
+                logger.info(f"Security ID card PDF generated for {entity.employee_id} by {user_info}")
+                
+                response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="ID_Card_{entity.employee_id}.pdf"'
+                
+                return response
+                
             else:
                 return Response(
                     {'success': False, 'error': 'Invalid card type or entity not found'},
@@ -756,7 +800,7 @@ class CardViewSet(viewsets.ModelViewSet):
                 )
             
             security = card.security_personnel
-            pdf_generator = IDCardPDFGenerator(security, card)
+            pdf_generator = SecurityIDCardPDFGenerator(security, card)
             pdf_buffer = pdf_generator.generate()
             
             IDCardPrintLog.objects.create(
