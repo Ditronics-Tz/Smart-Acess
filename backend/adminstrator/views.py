@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from .models import SecurityPersonnel , PhysicalLocations, AccessGates
 from .serializers import SecurityPersonnelSerializer, PhysicalLocationsSerializer, AccessGatesSerializer
-from .permissions import IsAdministrator
+from .permissions import IsAdministrator, IsAdministratorOnly
 import os
 from datetime import datetime
 import subprocess
@@ -244,7 +244,7 @@ class AccessGatesRestoreView(APIView):
 
 # System Settings Views
 class DatabaseBackupView(APIView):
-    permission_classes = [IsAdministrator]
+    permission_classes = [IsAdministratorOnly]
 
     def post(self, request):
         db_name = os.getenv('DB_NAME')
@@ -268,7 +268,7 @@ class DatabaseBackupView(APIView):
             return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class DatabaseRestoreView(APIView):
-    permission_classes = [IsAdministrator]
+    permission_classes = [IsAdministratorOnly]
 
     def post(self, request, backup_filename):
         db_name = os.getenv('DB_NAME')
@@ -292,7 +292,7 @@ class DatabaseRestoreView(APIView):
             return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class DatabaseBackupListView(APIView):
-    permission_classes = [IsAdministrator]
+    permission_classes = [IsAdministratorOnly]
 
     def get(self, request):
         backup_dir = os.path.join(os.path.dirname(__file__), "backups")

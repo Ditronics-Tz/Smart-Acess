@@ -115,168 +115,299 @@ This document outlines how the Access Control Microservice integrates with the e
 
 ### 1. API Integration
 
-#### Main System → Access Control Service
+#### EXISTING Main System API Endpoints (Already Implemented)
 
-**Card Synchronization Endpoint:**
-- **GET** `/api/cards/active/` - Fetch active cards
-- **POST** `/webhooks/card-updated/` - Real-time card updates
-- **POST** `/webhooks/card-deactivated/` - Card deactivation
+**Card Management:**
+- **GET** `/api/cards/` - List all cards with filtering and search
+- **POST** `/api/cards/` - Create single card
+- **GET** `/api/cards/{card_uuid}/` - Get card details
+- **GET** `/api/cards/students-without-cards/` - List students without cards
+- **GET** `/api/cards/staff-without-cards/` - List staff without cards
+- **GET** `/api/cards/security-without-cards/` - List security personnel without cards
+- **POST** `/api/cards/bulk-create-student-cards/` - Bulk create student cards
+- **POST** `/api/cards/bulk-create-staff-cards/` - Bulk create staff cards
+- **POST** `/api/cards/bulk-create-security-cards/` - Bulk create security cards
 
-**Policy Updates:**
-- **GET** `/api/policies/access/` - Fetch access policies
-- **POST** `/webhooks/policy-updated/` - Policy changes
+**Access Control (Already Integrated):**
+- **POST** `/api/access/check-access/` - RFID access validation (for hardware devices)
+- **GET** `/api/access/` - List access logs with filtering
+- **GET** `/api/access/statistics/` - Access control statistics
+- **GET** `/api/access/recent-activity/` - Recent access activity
 
-#### Access Control Service → Main System
+**Card Verification:**
+- **GET** `/api/cards/verify/student/{student_uuid}/` - Verify student card
+- **GET** `/api/cards/verify/staff/{staff_uuid}/` - Verify staff card
+- **GET** `/api/cards/verify/security/{security_uuid}/` - Verify security card
 
-**Access Logging:**
-- **POST** `/api/access/logs/batch/` - Send access attempts
-- **POST** `/api/access/alerts/` - Security alerts
+#### External Hardware Integration (If Needed)
 
-**Health Monitoring:**
-- **POST** `/api/monitoring/heartbeat/` - Service health
-- **POST** `/api/monitoring/gate-status/` - Gate status updates
+**For Hardware Devices → Main System:**
+- **POST** `/api/access/check-access/` - Real-time RFID validation
+- **GET** `/api/cards/active/` - Sync active cards to local cache
 
 ### 2. Database Integration
 
 #### Main System Database (PostgreSQL)
 ```sql
--- Existing tables remain unchanged
--- New table for access control integration
+-- EXISTING ACCESS CONTROL TABLES (Already Implemented)
 
-CREATE TABLE access_control_gates (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    gate_id VARCHAR(50) UNIQUE NOT NULL,
+-- Access logs for tracking all RFID card access attempts
+CREATE TABLE access_accesslog (
+    id BIGINT PRIMARY KEY,
+    log_uuid UUID UNIQUE NOT NULL,
+    rfid_number VARCHAR(50) NOT NULL,
+    card_id BIGINT NULL REFERENCES cardmanage_card(id),
+    access_status VARCHAR(20) NOT NULL, -- 'granted' or 'denied'
+    denial_reason VARCHAR(30) NULL,
+    access_location VARCHAR(100) NULL,
+    device_identifier VARCHAR(100) NULL,
+    ip_address INET NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    response_time_ms INTEGER NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Physical locations for gate management (Already Implemented)
+CREATE TABLE adminstrator_physicallocations (
+    location_id UUID PRIMARY KEY,
+    location_name VARCHAR(255) NOT NULL,
+    location_type VARCHAR(20) NOT NULL, -- 'campus', 'building', 'floor', 'room', 'gate', 'area'
+    description TEXT NULL,
+    is_restricted BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE NULL
+);
+
+-- Access gates configuration (Already Implemented)
+CREATE TABLE adminstrator_accessgates (
+    gate_id UUID PRIMARY KEY,
+    gate_code VARCHAR(20) UNIQUE NOT NULL,
     gate_name VARCHAR(100) NOT NULL,
-    location_id UUID REFERENCES physical_locations(id),
+    location_id UUID NOT NULL REFERENCES adminstrator_physicallocations(location_id),
+    gate_type VARCHAR(20) DEFAULT 'bidirectional', -- 'entry', 'exit', 'bidirectional'
+    hardware_id VARCHAR(100) UNIQUE NOT NULL,
+    ip_address VARCHAR(45) NULL,
+    mac_address VARCHAR(17) NULL,
+    status VARCHAR(20) DEFAULT 'active', -- 'active', 'inactive', 'maintenance', 'error'
+    emergency_override_enabled BOOLEAN DEFAULT FALSE,
+    backup_power_available BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE NULL
+);
+
+-- Multi-type card management (Already Implemented)
+CREATE TABLE cardmanage_card (
+    id BIGINT PRIMARY KEY,
+    card_uuid UUID UNIQUE NOT NULL,
+    rfid_number VARCHAR(50) UNIQUE NOT NULL,
+    card_type VARCHAR(20) NOT NULL, -- 'student', 'staff', 'security'
+    student_id BIGINT NULL REFERENCES students_student(id),
+    staff_id BIGINT NULL REFERENCES staff_staff(id),
+    security_personnel_id UUID NULL REFERENCES adminstrator_securitypersonnel(security_id),
     is_active BOOLEAN DEFAULT TRUE,
-    service_url VARCHAR(255),
-    last_heartbeat TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE access_log_summary (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    date DATE NOT NULL,
-    gate_id VARCHAR(50),
-    total_attempts INTEGER DEFAULT 0,
-    successful_attempts INTEGER DEFAULT 0,
-    denied_attempts INTEGER DEFAULT 0,
-    unique_cards INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT NOW()
+    issued_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expiry_date TIMESTAMP WITH TIME ZONE NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ```
 
-#### Access Control Database (SQLite)
+#### Optional External Hardware Device Database (SQLite)
 ```sql
--- Local cache optimized for fast lookups
--- Tables already defined in implementation guide
+-- Local cache for external RFID hardware devices (if implementing separate devices)
+-- This would only be needed for standalone hardware that requires offline operation
+
+CREATE TABLE local_cards (
+    id INTEGER PRIMARY KEY,
+    rfid_number TEXT NOT NULL UNIQUE,
+    card_type TEXT NOT NULL, -- 'student', 'staff', 'security'
+    holder_name TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    last_sync TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE pending_logs (
+    id INTEGER PRIMARY KEY,
+    rfid_number TEXT NOT NULL,
+    access_status TEXT NOT NULL,
+    gate_id TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    synced INTEGER DEFAULT 0
+);
 ```
 
-### 3. Real-time Communication
+### 3. Real-time Communication (Current Implementation)
 
-#### WebSocket Integration
+#### Django Signals (Already Implemented)
 ```python
-# In Main System - Real-time card updates
-class CardUpdateConsumer(AsyncWebsocketConsumer):
-    async def card_updated(self, event):
+# In cardmanage/models.py - Card model already has update triggers
+class Card(models.Model):
+    # ... existing fields ...
+    
+    def save(self, *args, **kwargs):
+        # Existing logic for card validation and updates
+        super().save(*args, **kwargs)
+        # Can add hardware notification here if needed
+
+# In access/models.py - AccessLog model for real-time logging
+class AccessLog(models.Model):
+    # ... existing fields for logging access events ...
+    
+    @classmethod
+    def log_access_attempt(cls, rfid_number, result, **kwargs):
+        # Existing method for logging access attempts in real-time
+        return cls.objects.create(
+            rfid_number=rfid_number,
+            access_status=result,
+            **kwargs
+        )
+```
+
+#### Optional WebSocket Integration (For Real-time Frontend Updates)
+```python
+# If implementing real-time frontend updates
+class AccessLogConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.channel_layer.group_add("access_logs", self.channel_name)
+        await self.accept()
+
+    async def access_log_update(self, event):
         await self.send(text_data=json.dumps({
-            'type': 'card_update',
-            'card_data': event['card_data']
+            'type': 'access_update',
+            'access_data': event['data']
         }))
 
-# In Access Control Service - WebSocket client
-class MainSystemWebSocketClient:
-    async def connect_to_updates(self):
-        uri = f"ws://{settings.MAIN_SYSTEM_URL}/ws/card-updates/"
-        async with websockets.connect(uri) as websocket:
-            async for message in websocket:
-                await self.handle_card_update(json.loads(message))
-```
-
-#### Event-Driven Updates
-```python
-# Main System - Send updates when cards change
-@receiver(post_save, sender=Card)
-def card_updated_signal(sender, instance, **kwargs):
-    # Notify access control service
-    notify_access_control_service.delay(instance.card_uuid)
-
-# Access Control Service - Handle card updates
-async def handle_card_update(card_data):
-    await update_local_card_cache(card_data)
-    await invalidate_redis_cache(card_data['rfid_number'])
+# Signal to notify frontend of new access logs
+@receiver(post_save, sender=AccessLog)
+def access_log_created(sender, instance, created, **kwargs):
+    if created:
+        # Notify WebSocket subscribers
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            "access_logs",
+            {
+                'type': 'access_log_update',
+                'data': {
+                    'rfid_number': instance.rfid_number,
+                    'access_status': instance.access_status,
+                    'timestamp': instance.timestamp.isoformat()
+                }
+            }
+        )
 ```
 
 ## Configuration Integration
 
 ### 1. Environment Variables
 
-#### Main System (.env additions)
+#### Main System (.env) - Current Implementation
 ```env
-# Access Control Integration
-ACCESS_CONTROL_SERVICE_URL=http://access-control:8001
-ACCESS_CONTROL_API_KEY=your-secure-api-key
-ACCESS_CONTROL_WEBHOOK_SECRET=webhook-secret-key
+# Database Configuration (PostgreSQL)
+DB_NAME=smart_access_db
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_HOST=localhost
+DB_PORT=5432
 
-# Gate Management
-ENABLE_GATE_MANAGEMENT=true
-DEFAULT_GATE_OPEN_DURATION=3
+# JWT Configuration (Already Implemented)
+SECRET_KEY=your-django-secret-key
+
+# Email Configuration (Already Implemented)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
+
+# Frontend Integration (Already Implemented)
+FRONTEND_URL=http://localhost:3000
+
+# CORS Configuration (Already Implemented)
+CORS_ALLOWED_ORIGINS=["http://localhost:3000", "http://127.0.0.1:3000"]
+
+# Optional: External Hardware Integration
+HARDWARE_DEVICE_API_KEY=your-secure-api-key-for-rfid-devices
+ENABLE_HARDWARE_LOGGING=true
 ```
 
-#### Access Control Service (.env)
+#### External Hardware Device Configuration (If Implementing Separate Devices)
 ```env
 # Main System Integration
-MAIN_SYSTEM_URL=http://main-system:8000
+MAIN_SYSTEM_URL=http://your-server:8000
 MAIN_SYSTEM_API_KEY=your-api-key
-MAIN_SYSTEM_WEBHOOK_SECRET=webhook-secret-key
 
-# Service Configuration
-SYNC_INTERVAL=300
-OFFLINE_GRACE_PERIOD=86400
-CARD_CACHE_TTL=3600
+# Hardware Settings
+RFID_READER_PORT=/dev/ttyUSB0
+RFID_READER_BAUD=9600
+GATE_CONTROL_PIN=18
+
+# Local Caching
+CACHE_DURATION=3600
+OFFLINE_MODE_ENABLED=true
 ```
 
-### 2. Docker Compose Integration
+### 2. Docker Compose Integration (Current Implementation)
 
 ```yaml
 version: '3.8'
 
 services:
-  # Main system services
-  web:
+  # Main Django system with integrated access control
+  backend:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
-      - ACCESS_CONTROL_SERVICE_URL=http://access-control:8001
+      - DB_NAME=smart_access_db
+      - DB_USER=postgres
+      - DB_PASSWORD=your_password
+      - DB_HOST=db
+      - DB_PORT=5432
     depends_on:
       - db
-      - redis
+    volumes:
+      - ./backend:/app
+      - ./media:/app/media
 
+  # PostgreSQL Database
   db:
-    image: postgres:15
-    # ... existing postgres config
+    image: postgres:14
+    environment:
+      POSTGRES_DB: smart_access_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: your_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
-  # Access control service
-  access-control:
-    build: ./access-control-service
+  # Frontend application
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+  # Optional: External RFID hardware service
+  rfid-hardware:
+    build: ./hardware-service
     ports:
       - "8001:8001"
     environment:
-      - MAIN_SYSTEM_URL=http://web:8000
+      - MAIN_SYSTEM_URL=http://backend:8000
+      - MAIN_SYSTEM_API_KEY=your-api-key
     depends_on:
-      - redis
-      - web
+      - backend
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0  # RFID reader
-    privileged: true  # For GPIO access
+      - /dev/ttyUSB0:/dev/ttyUSB0  # RFID reader device
+    privileged: true  # For GPIO access on Raspberry Pi
 
-  redis:
-    image: redis:7-alpine
-    # ... shared redis instance
-
-  # Monitoring
+  # Optional: Monitoring
   prometheus:
     image: prom/prometheus
     ports:
@@ -284,38 +415,53 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
 
-  grafana:
-    image: grafana/grafana
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+volumes:
+  postgres_data:
 ```
 
-## Security Integration
+## Security Integration (Current Implementation)
 
 ### 1. Authentication & Authorization
 
-#### API Key Management
+#### JWT Token-Based Authentication (Already Implemented)
 ```python
-# Main System - Generate API keys for access control service
-class AccessControlAPIKey(models.Model):
-    service_name = models.CharField(max_length=100)
-    api_key = models.CharField(max_length=255, unique=True)
-    permissions = models.JSONField(default=list)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_used = models.DateTimeField(null=True)
+# In authenication/views.py - JWT authentication already implemented
+from rest_framework_simplejwt.tokens import RefreshToken
 
-# Access Control Service - API key validation
-async def validate_api_key(api_key: str) -> bool:
-    # Validate against main system or local cache
-    pass
+class LoginView(APIView):
+    def post(self, request):
+        # Existing JWT authentication logic
+        username = request.data.get('username')
+        password = request.data.get('password')
+        
+        user = authenticate(username=username, password=password)
+        if user:
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'access': str(refresh.access_token),
+                'refresh': str(refresh)
+            })
 ```
 
-#### Webhook Security
+#### Permission-Based Access Control (Already Implemented)
 ```python
-# Webhook signature verification
+# In access/permissions.py - Role-based permissions already exist
+from rest_framework.permissions import BasePermission
+
+class IsSecurityPersonnelOrAdmin(BasePermission):
+    def has_permission(self, request, view):
+        # Existing permission logic for access control operations
+        return request.user.is_staff or hasattr(request.user, 'security_personnel')
+
+# In access/views.py - Permissions already applied
+class AccessControlViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsSecurityPersonnelOrAdmin]
+    # ... existing access control logic
+```
+
+#### Hardware Device Authentication (For External Devices)
+```python
+# Optional: API key authentication for external hardware devices
 import hmac
 import hashlib
 
@@ -328,53 +474,118 @@ def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> boo
     return hmac.compare_digest(f"sha256={expected_signature}", signature)
 ```
 
-### 2. Network Security
+### 2. Network Security (Current Implementation)
 
-#### Internal Network Communication
+#### CORS Configuration (Already Implemented)
+```python
+# In backend/settings.py - CORS already configured
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# Only specific headers allowed
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+```
+
+#### Internal Network Communication (Optional for Hardware)
 ```yaml
-# docker-compose.yml - Internal network
+# docker-compose.yml - Internal network for hardware devices
 networks:
   smart-access-internal:
     driver: bridge
     internal: true
 
 services:
-  web:
+  backend:
     networks:
       - smart-access-internal
       - default
 
-  access-control:
+  rfid-hardware:
     networks:
       - smart-access-internal
-    # Only expose necessary ports externally
+    # Only internal communication with main system
 ```
 
-#### TLS/SSL Configuration
+#### TLS/SSL Configuration (Production)
 ```nginx
-# nginx.conf - SSL termination
+# nginx.conf - SSL termination for main system
 server {
     listen 443 ssl;
-    server_name access-control.example.com;
+    server_name smart-access.example.com;
     
-    ssl_certificate /etc/ssl/certs/access-control.crt;
-    ssl_certificate_key /etc/ssl/private/access-control.key;
+    ssl_certificate /etc/ssl/certs/smart-access.crt;
+    ssl_certificate_key /etc/ssl/private/smart-access.key;
     
     location / {
-        proxy_pass http://access-control:8001;
+        proxy_pass http://backend:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    
+    # API endpoints for hardware devices
+    location /api/access/ {
+        proxy_pass http://backend:8000;
+        # Rate limiting for hardware devices
+        limit_req zone=api burst=10 nodelay;
     }
 }
 ```
 
-## Monitoring Integration
+## Monitoring Integration (Current Implementation)
 
 ### 1. Metrics Collection
 
-#### Prometheus Metrics
+#### Django Logging (Already Implemented)
 ```python
-# Shared metrics across services
+# In backend/settings.py - Logging already configured
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': 'access_control.log',
+        },
+    },
+    'loggers': {
+        'access': {
+            'handlers': ['file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
+
+# In access/views.py - Access logging already exists
+import logging
+logger = logging.getLogger('access')
+
+class AccessControlViewSet(viewsets.ModelViewSet):
+    def check_access(self, request):
+        # Existing logging for access attempts
+        logger.info(f"Access attempt: RFID {rfid_number}")
+```
+
+#### Optional Prometheus Metrics (For Advanced Monitoring)
+```python
+# For advanced monitoring - can be added to existing views
 from prometheus_client import Counter, Histogram, Gauge
 
 # Access control metrics
@@ -388,141 +599,281 @@ card_operations_total = Counter('card_operations_total', 'Card operations', ['op
 sync_operations_total = Counter('sync_operations_total', 'Sync operations', ['service', 'result'])
 ```
 
-#### Health Check Integration
+#### Health Check Integration (Current Implementation)
 ```python
-# Combined health check endpoint
-@app.get("/health/detailed")
-async def detailed_health_check():
-    health_status = {
-        "main_system": await check_main_system_health(),
-        "access_control": await check_access_control_health(),
-        "database": await check_database_health(),
-        "redis": await check_redis_health(),
-        "hardware": await check_hardware_health()
-    }
+# In backend/urls.py - Simple health check already available
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({
+        "status": "healthy",
+        "timestamp": timezone.now().isoformat(),
+        "database": check_database_connection(),
+        "services": {
+            "access_control": "integrated",
+            "card_management": "active",
+            "authentication": "active"
+        }
+    })
+
+# Optional: Enhanced health check for external hardware
+@api_view(['GET'])
+def detailed_health_check(request):
+    """Enhanced health check including hardware status"""
+    from django.db import connection
     
-    overall_status = "healthy" if all(
-        status == "healthy" for status in health_status.values()
-    ) else "unhealthy"
+    try:
+        # Check database
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        db_status = "healthy"
+    except Exception:
+        db_status = "unhealthy"
     
-    return {
-        "overall_status": overall_status,
-        "services": health_status,
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    return Response({
+        "overall_status": "healthy" if db_status == "healthy" else "unhealthy",
+        "services": {
+            "database": db_status,
+            "access_control": "integrated",
+            "card_management": "active",
+            "physical_gates": check_gate_connectivity()  # If hardware implemented
+        },
+        "timestamp": timezone.now().isoformat()
+    })
 ```
 
-### 2. Logging Integration
+### 2. Logging Integration (Current Implementation)
 
 #### Centralized Logging
 ```yaml
 # docker-compose.yml - Add logging driver
 services:
-  web:
+  backend:
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-        labels: "service=main-system"
+        labels: "service=smart-access-backend"
 
-  access-control:
+  rfid-hardware:
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-        labels: "service=access-control"
+        labels: "service=rfid-hardware"
 ```
 
-#### Log Correlation
+#### Request Tracking (Optional Enhancement)
 ```python
-# Add correlation IDs for tracing requests across services
+# Add request tracking middleware to Django
 import uuid
-from contextvars import ContextVar
+import logging
 
-correlation_id: ContextVar[str] = ContextVar('correlation_id')
+logger = logging.getLogger('access')
 
-@app.middleware("http")
-async def correlation_id_middleware(request: Request, call_next):
-    corr_id = request.headers.get('X-Correlation-ID', str(uuid.uuid4()))
-    correlation_id.set(corr_id)
-    
-    response = await call_next(request)
-    response.headers['X-Correlation-ID'] = corr_id
-    return response
+class RequestTrackingMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Generate correlation ID for tracking
+        correlation_id = request.headers.get('X-Correlation-ID', str(uuid.uuid4()))
+        request.correlation_id = correlation_id
+        
+        # Log request start
+        logger.info(f"Request started: {request.path} [{correlation_id}]")
+        
+        response = self.get_response(request)
+        
+        # Add correlation ID to response
+        response['X-Correlation-ID'] = correlation_id
+        
+        # Log request completion
+        logger.info(f"Request completed: {request.path} [{correlation_id}] - {response.status_code}")
+        
+        return response
+
+# In access/views.py - Enhanced logging with correlation
+class AccessControlViewSet(viewsets.ModelViewSet):
+    def check_access(self, request):
+        correlation_id = getattr(request, 'correlation_id', 'unknown')
+        logger.info(f"Access check: RFID {rfid_number} [{correlation_id}]")
+        # ... existing logic ...
 ```
 
-## Deployment Strategy
+## Deployment Strategy (Current Implementation)
 
-### 1. Phased Rollout
+### 1. Current System Enhancement
 
-#### Phase 1: Development Environment
-- Deploy both services locally
-- Test integration endpoints
-- Validate hardware interfaces
+#### Phase 1: Hardware Integration Setup
+- Identify physical gate locations and hardware requirements
+- Configure network connectivity for RFID devices
+- Set up API endpoints for hardware communication
 
-#### Phase 2: Staging Environment
-- Production-like hardware setup
-- Load testing with realistic data
-- Security testing and penetration testing
+#### Phase 2: External Device Integration (If Needed)
+- Deploy external RFID hardware service containers
+- Configure device communication with main Django system
+- Test hardware integration with existing access control endpoints
 
 #### Phase 3: Production Deployment
-- Blue-green deployment strategy
-- Gradual migration of gates
-- Monitoring and alerting setup
+- Configure production database and security settings
+- Set up monitoring and logging for access control operations
+- Deploy to production environment with existing infrastructure
 
-### 2. Migration Strategy
+### 2. System Enhancement Strategy
 
-#### Existing System Migration
+#### Existing System Enhancement (No Migration Needed)
 ```python
-# Migration script to prepare existing data
+# The system already has integrated access control
+# Enhancement script to optimize existing functionality
+from django.core.management.base import BaseCommand
+from access.models import AccessLog
+from cardmanage.models import Card
+
 class Command(BaseCommand):
+    help = 'Optimize existing access control system'
+    
     def handle(self, *args, **options):
-        # Migrate existing cards to new format
-        cards = Card.objects.all()
-        for card in cards:
-            # Ensure compatibility with access control service
-            self.prepare_card_for_access_control(card)
+        # Optimize access log queries for better performance
+        self.optimize_access_logs()
+        
+        # Ensure all cards have proper RFID indexing
+        self.optimize_card_indexing()
+        
+        # Set up monitoring for existing endpoints
+        self.setup_monitoring()
+    
+    def optimize_access_logs(self):
+        # Add database indexes for better query performance
+        self.stdout.write('Optimizing access log queries...')
+        
+    def optimize_card_indexing(self):
+        # Ensure RFID numbers are properly indexed
+        cards_without_rfid = Card.objects.filter(rfid_number__isnull=True)
+        self.stdout.write(f'Found {cards_without_rfid.count()} cards without RFID numbers')
+        
+    def setup_monitoring(self):
+        # Configure monitoring for existing access control endpoints
+        self.stdout.write('Setting up access control monitoring...')
 ```
 
-#### Rollback Plan
+#### System Backup Plan
 ```bash
 #!/bin/bash
-# rollback.sh - Quick rollback script
-echo "Rolling back to previous version..."
+# backup.sh - Backup current system before hardware integration
+echo "Backing up Smart Access system..."
 
-# Stop access control service
-docker-compose stop access-control
+# Backup database
+docker exec smart-access-db pg_dump -U postgres smart_access_db > backup_$(date +%Y%m%d_%H%M%S).sql
 
-# Restore main system to standalone mode
-docker-compose up -d web
+# Backup media files
+tar -czf media_backup_$(date +%Y%m%d_%H%M%S).tar.gz ./media/
 
-echo "Rollback completed - system running in standalone mode"
+echo "Backup completed - ready for hardware integration"
 ```
 
-## Performance Considerations
+## Performance Considerations (Current Implementation)
 
-### 1. Caching Strategy
+### 1. Database Optimization
 
-#### Multi-level Caching
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ Memory Cache    │───►│ Redis Cache     │───►│ Database        │
-│ (Hot cards)     │    │ (All active)    │    │ (Complete data) │
-│ 100ms access    │    │ 1-5ms access    │    │ 10-50ms access  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-#### Cache Invalidation
+#### PostgreSQL Optimizations (Already Configured)
 ```python
-# Smart cache invalidation
-async def invalidate_card_cache(card_uuid: str, rfid_number: str):
-    # Clear from all cache levels
-    await memory_cache.delete(f"card:{rfid_number}")
-    await redis_cache.delete(f"card:{rfid_number}")
-    
-    # Notify other service instances
+# In backend/settings.py - Database settings already optimized
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'OPTIONS': {
+            'MAX_CONNS': 20,
+            'OPTIONS': {
+                'isolation_level': psycopg2.extensions.ISOLATION_LEVEL_READ_COMMITTED,
+            }
+        }
+    }
+}
+
+# Connection pooling for better performance
+DATABASE_POOL_SIZE = 20
+DATABASE_MAX_OVERFLOW = 0
+```
+
+#### Query Optimization (Current Implementation)
+```python
+# In access/views.py - Optimized queries already exist
+class AccessControlViewSet(viewsets.ModelViewSet):
+    def check_access(self, request):
+        # Optimized query with select_related for better performance
+        try:
+            card = Card.objects.select_related(
+                'student', 'staff', 'security_personnel'
+            ).get(rfid_number=rfid_number, is_active=True)
+            # ... existing optimized logic
+        except Card.DoesNotExist:
+            # Efficient logging without heavy queries
+            AccessLog.objects.create(
+                rfid_number=rfid_number,
+                access_status='denied',
+                denial_reason='card_not_found'
+            )
+```
+
+#### Database Indexing (Already Implemented)
+```python
+# Models already have proper indexing
+class Card(models.Model):
+    rfid_number = models.CharField(max_length=50, unique=True, db_index=True)  # Indexed
+    card_uuid = models.UUIDField(unique=True, db_index=True)  # Indexed
+    is_active = models.BooleanField(default=True, db_index=True)  # Indexed
+
+class AccessLog(models.Model):
+    rfid_number = models.CharField(max_length=50, db_index=True)  # Indexed
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)  # Indexed
+```
+### 2. Optional Caching (For High-Volume Hardware)
+
+#### Django Cache Framework (Can Be Added)
+```python
+# In backend/settings.py - Add caching if needed for hardware
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+
+# In access/views.py - Add caching for high-volume access
+from django.core.cache import cache
+
+class AccessControlViewSet(viewsets.ModelViewSet):
+    def check_access(self, request):
+        rfid_number = request.data.get('rfid_number')
+        
+        # Check cache first for frequently accessed cards
+        cache_key = f"card_access_{rfid_number}"
+        cached_result = cache.get(cache_key)
+        
+        if cached_result:
+            # Use cached result for faster response
+            return Response(cached_result)
+        
+        # ... existing database query logic ...
+        
+        # Cache the result for 1 hour
+        cache.set(cache_key, result_data, 3600)
+        return Response(result_data)
+
+# Cache invalidation when cards are updated
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=Card)
+def invalidate_card_cache(sender, instance, **kwargs):
+    cache_key = f"card_access_{instance.rfid_number}"
+    cache.delete(cache_key)
     await publish_cache_invalidation(card_uuid)
 ```
 
