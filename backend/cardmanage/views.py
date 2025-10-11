@@ -9,6 +9,7 @@ from .serializers import (
 )
 from .pdf_service import IDCardPDFGenerator
 from .security_pdf_service import SecurityIDCardPDFGenerator
+from .staff_pdf_service import StaffIDCardPDFGenerator
 from students.models import Student
 from staff.models import Staff
 from adminstrator.models import SecurityPersonnel
@@ -641,7 +642,7 @@ class CardViewSet(viewsets.ModelViewSet):
                 
             elif card.card_type == 'staff' and card.staff:
                 entity = card.staff
-                pdf_generator = IDCardPDFGenerator(entity, card)
+                pdf_generator = StaffIDCardPDFGenerator(entity, card)
                 pdf_buffer = pdf_generator.generate()
                 
                 IDCardPrintLog.objects.create(
@@ -756,7 +757,7 @@ class CardViewSet(viewsets.ModelViewSet):
                 )
             
             staff = card.staff
-            pdf_generator = IDCardPDFGenerator(staff, card)
+            pdf_generator = StaffIDCardPDFGenerator(staff, card)
             pdf_buffer = pdf_generator.generate()
             
             IDCardPrintLog.objects.create(
