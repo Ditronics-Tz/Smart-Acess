@@ -10,7 +10,7 @@ urlpatterns = [
     path('api/students/', include('students.urls')),
     path('api/staff/', include('staff.urls')),
     path('api/cards/', include('cardmanage.urls')),
-    path('api/access/', include('access.urls')),  # Access control API
+    path('api/v1/access/', include('access.urls')),  # Access control API
 ]
 
 if settings.DEBUG:

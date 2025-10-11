@@ -7,6 +7,8 @@ from .serializers import (
 )
 from cardmanage.models import Card
 from students.models import Student
+from staff.models import Staff
+from adminstrator.models import SecurityPersonnel
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -128,6 +130,7 @@ class AccessControlViewSet(viewsets.ModelViewSet):
         """
         SIMPLE & FAST RFID access control endpoint.
         Target response time: <20ms
+        Supports all card types: student, staff, security
         """
         start_time = timezone.now()
         
@@ -141,20 +144,13 @@ class AccessControlViewSet(viewsets.ModelViewSet):
         
         access_granted = False
         message = "Access denied"
-        student_name = None
+        person_name = None
         denial_reason = None
+        card_holder_info = None
         
         try:
-            # SIMPLE: One optimized query using actual model fields
-            card = Card.objects.select_related('student').filter(
-                rfid_number=rfid_number
-            ).only(
-                'is_active', 'expiry_date',
-                'student__first_name', 'student__surname', 
-                'student__is_active', 'student__registration_number',
-                'student__department', 'student__student_status',
-                'student__mobile_phone', 'student__soma_class_code'
-            ).first()
+            # Get card with appropriate related model based on card type
+            card = Card.objects.select_related('student', 'staff', 'security_personnel').filter(rfid_number=rfid_number).first()
             
             if not card:
                 denial_reason = 'invalid_rfid'
@@ -165,13 +161,73 @@ class AccessControlViewSet(viewsets.ModelViewSet):
             elif card.expiry_date and card.expiry_date < timezone.now():
                 denial_reason = 'card_expired'
                 message = "Card expired"
-            elif not card.student.is_active:
-                denial_reason = 'student_inactive'
-                message = "Student inactive"
             else:
-                access_granted = True
-                message = "Access granted"
-                student_name = f"{card.student.first_name} {card.student.surname}"
+                # Check person active status based on card type
+                person_active = False
+                
+                if card.card_type == 'student' and card.student:
+                    person_active = card.student.is_active
+                    if not person_active:
+                        denial_reason = 'student_inactive'
+                        message = "Student inactive"
+                    else:
+                        access_granted = True
+                        message = "Access granted"
+                        person_name = f"{card.student.first_name} {card.student.surname}"
+                        card_holder_info = {
+                            'name': person_name,
+                            'first_name': card.student.first_name,
+                            'surname': card.student.surname,
+                            'registration_number': card.student.registration_number,
+                            'department': card.student.department,
+                            'soma_class_code': getattr(card.student, 'soma_class_code', None),
+                            'student_status': card.student.student_status,
+                            'academic_year_status': getattr(card.student, 'academic_year_status', None),
+                            'mobile_phone': getattr(card.student, 'mobile_phone', None),
+                            'card_type': 'student'
+                        }
+                        
+                elif card.card_type == 'staff' and card.staff:
+                    person_active = card.staff.is_active
+                    if not person_active:
+                        denial_reason = 'staff_inactive'
+                        message = "Staff inactive"
+                    else:
+                        access_granted = True
+                        message = "Access granted"
+                        person_name = f"{card.staff.first_name} {card.staff.surname}"
+                        card_holder_info = {
+                            'name': person_name,
+                            'first_name': card.staff.first_name,
+                            'surname': card.staff.surname,
+                            'staff_number': card.staff.staff_number,
+                            'department': card.staff.department,
+                            'position': card.staff.position,
+                            'employment_status': card.staff.employment_status,
+                            'card_type': 'staff'
+                        }
+                        
+                elif card.card_type == 'security' and card.security_personnel:
+                    person_active = card.security_personnel.is_active
+                    if not person_active:
+                        denial_reason = 'security_inactive'
+                        message = "Security personnel inactive"
+                    else:
+                        access_granted = True
+                        message = "Access granted"
+                        person_name = card.security_personnel.full_name
+                        card_holder_info = {
+                            'name': person_name,
+                            'full_name': card.security_personnel.full_name,
+                            'employee_id': card.security_personnel.employee_id,
+                            'badge_number': card.security_personnel.badge_number,
+                            'phone_number': card.security_personnel.phone_number,
+                            'hire_date': card.security_personnel.hire_date.isoformat() if card.security_personnel.hire_date else None,
+                            'card_type': 'security'
+                        }
+                else:
+                    denial_reason = 'invalid_card_type'
+                    message = "Invalid card configuration"
         
         except Exception as e:
             denial_reason = 'system_error'
@@ -187,13 +243,14 @@ class AccessControlViewSet(viewsets.ModelViewSet):
         try:
             AccessLog.objects.create(
                 rfid_number=rfid_number,
-                card=card if card else None,
+                card=card if 'card' in locals() and card else None,
                 access_status='granted' if access_granted else 'denied',
                 denial_reason=denial_reason,
                 timestamp=start_time,
                 response_time_ms=response_time_ms
             )
-        except:
+        except Exception as log_error:
+            print(f"DEBUG: Logging error: {log_error}")
             pass  # Don't fail access check if logging fails
         
         # SIMPLE: Minimal response
@@ -203,25 +260,9 @@ class AccessControlViewSet(viewsets.ModelViewSet):
             'response_time': response_time_ms
         }
         
-        if access_granted and student_name and card:
-            try:
-                response_data['student'] = {
-                    'name': student_name,
-                    'first_name': card.student.first_name,
-                    'surname': card.student.surname,
-                    'registration_number': card.student.registration_number,
-                    'department': card.student.department,
-                    'soma_class_code': getattr(card.student, 'soma_class_code', None),
-                    'student_status': card.student.student_status,
-                    'academic_year_status': getattr(card.student, 'academic_year_status', None),
-                    'mobile_phone': getattr(card.student, 'mobile_phone', None)
-                }
-            except Exception as e:
-                # If student data fails, just include basic info
-                response_data['student'] = {
-                    'name': student_name
-                }
-                print(f"DEBUG: Error accessing student data: {str(e)}")
+        # Add person information if access granted
+        if access_granted and card_holder_info:
+            response_data['person'] = card_holder_info
         
         return Response(response_data, status=status.HTTP_200_OK)
 

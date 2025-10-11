@@ -4,3 +4,4 @@ __pycache__/
 */__pycache__/
 **/__pycache__/
 backend/authenication/__pycache__/
+.pyc
