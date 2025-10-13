@@ -11,6 +11,7 @@ urlpatterns = [
     path('api/staff/', include('staff.urls')),
     path('api/cards/', include('cardmanage.urls')),
     path('api/v1/access/', include('access.urls')),  # Access control API
+    path('api/stats/', include('stats.urls')),  # Statistics and analytics API
 ]
 
 if settings.DEBUG:
